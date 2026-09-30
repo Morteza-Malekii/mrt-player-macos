@@ -294,6 +294,66 @@
   (`test:packaged`, `test:4k:packaged`) yeniden koşulmadı.
 - webOS deposuna dokunulmadı; `shared:check` eskiden olduğu gibi başarısız.
 
+## Liste kilidi (sürüm numarası artırılmadı)
+
+- Kategori başına PIN kilidi eklendi (canlı, film, dizi). PIN 4–8 rakam, yalnızca
+  tuzlu PBKDF2-SHA256 (150 bin tur) özeti olarak kitaplık dosyasında saklanıyor.
+  Tuz ve özet her `makePin` çağrısında değişiyor, özet PIN'i içermiyor (birim testi).
+- Kilitli içerik liste, "Tüm içerikler", arama, favoriler ve son izlenenlerden
+  çıkarılıyor. Kilitlemede çalan kanal duruyor. Bir PIN tüm kilitleri pencere
+  boyunca açıyor; açık durumu yalnızca bellekte, yeniden başlatmada kilitli.
+- Hatalı deneme sınırı: 5 yanlıştan sonra 30 saniye bekleme; bu sırada doğru PIN de
+  reddediliyor. Sayaç pencere boyunca tutulur, pencereyi kapatıp açmak sıfırlamaz.
+- `npm run test:lock` gerçek Electron penceresinde doğruluyor: kısa ve uyuşmayan PIN
+  reddi, kilitli listede kanalın görünmemesi, "Tüm içerikler", favoriler ve son
+  izlenenlerde gizlenmesi, Esc'in yalnızca pencereyi kapatması, yanlış PIN, doğru
+  PIN, kilitlemede oynatmanın durması ve favorinin gizlenmesi, hatalı deneme
+  sınırı, yeniden başlatmada kilidin kalması ve PIN ile tüm kilitleri kaldırma.
+  Gizleme süzgeci kaldırıldığında test "Tüm içerikler" adımında başarısız oluyor.
+- Bilinen sınırlar: (1) Süzgeç arayüzde uygulanır; kitaplık dosyasını okuyabilen biri
+  PIN özetini görür. Bu çocuk ve ev içi gizlilik içindir. (2) Bu özellikten önce
+  favorilere veya geçmişe girmiş bölümlerin kategorisi boş kayıtlıdır; kilitli bir
+  dizinin eski bölüm kayıtları gizlenemez. Yenileri gizlenir. (3) Yalnızca Mac:
+  TV tarafındaki `file://` sayfa `crypto.subtle` kullanamayabilir, webOS'a
+  taşınmadan önce doğrulanmalı.
+
+## Afişler ve kanal logoları (sürüm numarası artırılmadı)
+
+- Kanal ve film/dizi listelerinde sağlayıcının verdiği logo veya afiş adın yanında
+  gösteriliyor; görsel yoksa veya yüklenemezse baş harfler (kanal) ya da simge
+  (film) kalıyor. Ayarlar → "Kanal ve film afişlerini göster" ile açılıp kapanıyor.
+  **Varsayılan kapalı** (gizlilik): açılana kadar sağlayıcı dışında hiçbir siteye
+  bağlanılmıyor.
+- Görseller sayfaya değil ana sürece iniyor: `kiyi://image/<tür>/<id>`. Sağlayıcı
+  adresi `Session` belleğinde kalıyor, arayüze giden satırdan siliniyor (birim testi:
+  yanıtta `cdn.example` geçmiyor). Kitaplık dosyası hiçbir adres içermiyor; favori ve
+  geçmiş afişleri `icons-<profil>.json` dosyasında, arayüzün görmediği yerde.
+- `ImageGateway` birim testi: doğru PNG geçiyor; HTML, SVG, 4 MB'tan büyük ve 404
+  yanıtlar 404'e dönüyor; bilinmeyen kimlik, başka tür ve `HEAD` ağa hiç çıkmıyor;
+  önbellekteki ve bulunamayan resim ikinci kez sunucuya sorulmuyor; 12 eşzamanlı
+  resimde en çok 4 istek uçuşta.
+- `npm run test:posters` gerçek Electron penceresinde: logo yüklendi (64×96), eksik
+  görselde "İS" baş harfleri kaldı, tüm `<img>` adresleri `kiyi://image/` ile
+  başlıyor, sayfa içeriğinde sağlayıcı yolu yok, kanal afişli listede de oynuyor,
+  kapatınca `img.poster-image` yok, açınca geri geliyor, favori filmin afişi katalog
+  açılmadan yeniden başlatmada geliyor, kitaplık dosyasında adres yok.
+- Ekran görüntüsü bir hata yakaladı: `.poster` konumlandırılmamışken afiş tüm kartı
+  kaplıyor ve ad altında kayboluyordu. Düzeltildi ve testte geometri denetimi
+  (resim çerçeveden taşmıyor, ad örtülmüyor) eklendi.
+- Gizlilik: afiş adresi üçüncü taraf bir görsel sitesine işaret edebilir; açıkken o
+  site IP adresini ve hangi listeyi açtığını görür. Bu yüzden varsayılan kapalı ve
+  Ayarlar ile README bunu açıkça yazıyor. Kapalıyken ana süreç hiçbir adres sunmuyor
+  ve diske yazmıyor (birim testi: kapalıyken `posterUrl` boş, adres dosyası
+  oluşmuyor; kapatınca dosya `{}` oluyor). `test:posters` varsayılan durumda üç
+  liste gezildikten sonra sunucunun hiç görsel isteği görmediğini doğruluyor;
+  varsayılan açığa çevrilince test bu adımda başarısız oluyor.
+- Gizlilik taraması: kaynakta `fetch`, `XMLHttpRequest`, `sendBeacon`, WebSocket,
+  `crashReporter`, `autoUpdater`, `console` veya dosyaya günlük yazımı yok; bağımlılıklar
+  yalnızca hls.js, mpegts.js, react, react-dom. Sağlayıcı dışına giden tek yol afişlerdir.
+- Bilinen sınırlar: bölümlerde afiş yok; bir kategori ilk açılana kadar o listenin
+  afişleri istenmez (yalnızca görünen ilk 60 öğe istenir); Mac'e özgü, TV'de
+  `Settings` bu seçeneği göstermiyor.
+
 ## Dış doğrulama gerektiren sınır
 
 Fiziksel LG TV veya çalışan LG simülatörü verilmedi. Dolayısıyla `.ipk` kurulum,

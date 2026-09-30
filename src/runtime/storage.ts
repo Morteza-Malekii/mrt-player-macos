@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import { randomBytes, pbkdf2, createCipheriv, createDecipheriv } from 'crypto';
 import type { Credentials, Library } from '../core/models';
 import type { LibraryStore, Vault } from './session';
-import { AppError } from '../core/errors';
+import { AppError, object } from '../core/errors';
 import { normalizeLibrary } from '../core/library';
 const readFile = promisify(fs.readFile), writeFile = promisify(fs.writeFile), rename = promisify(fs.rename), unlink = promisify(fs.unlink), stat = promisify(fs.stat), readdir = promisify(fs.readdir);
 export async function ensureDirectory(dir: string): Promise<void> {
@@ -25,13 +25,17 @@ export class FileLibraryStore implements LibraryStore {
     try { return normalizeLibrary(JSON.parse(await readFile(this.file(profile), 'utf8'))); }
     catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return normalizeLibrary({}); throw new AppError('STORAGE', 'Yerel kitaplık okunamadı. Disk veya kayıt verisini kontrol edin.'); }
   }
+  async readIcons(profile: string): Promise<Record<string, unknown>> {
+    try { return object(JSON.parse(await readFile(this.file(profile, 'icons'), 'utf8'))); } catch { return {}; }
+  }
+  async writeIcons(profile: string, icons: Record<string, string>): Promise<void> { await atomicWrite(this.file(profile, 'icons'), JSON.stringify(icons)); }
   async write(profile: string, library: Library): Promise<void> { try { await atomicWrite(this.file(profile), JSON.stringify(normalizeLibrary(library))); } catch { throw new AppError('STORAGE', 'Yerel ayarlar kaydedilemedi. Boş disk alanını kontrol edin.'); } }
   async clear(): Promise<void> {
     try {
-      for (const name of await readdir(this.dir)) if (/^library-[a-f0-9]{24}\.json$/.test(name)) await remove(path.join(this.dir, name));
+      for (const name of await readdir(this.dir)) if (/^(library|icons)-[a-f0-9]{24}\.json$/.test(name)) await remove(path.join(this.dir, name));
     } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new AppError('STORAGE', 'Yerel favoriler ve geçmiş silinemedi.'); }
   }
-  private file(profile: string) { if (!/^[a-f0-9]{24}$/.test(profile)) throw new AppError('PROFILE', 'Geçersiz profil.'); return path.join(this.dir, `library-${profile}.json`); }
+  private file(profile: string, kind: 'library' | 'icons' = 'library') { if (!/^[a-f0-9]{24}$/.test(profile)) throw new AppError('PROFILE', 'Geçersiz profil.'); return path.join(this.dir, `${kind}-${profile}.json`); }
 }
 // Node 8 compatible; passphrase is never persisted. Authenticated encryption rejects tampering.
 export class PassphraseVault implements Vault {

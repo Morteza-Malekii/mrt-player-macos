@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import ffmpeg from 'ffmpeg-static';
-export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer }; cors?: boolean; catalogSizes?: Partial<Record<'live' | 'vod' | 'series', number>>; videoSize?: string; videoBitrate?: string; videoDuration?: number; live?: boolean; audio?: 'aac' | 'ac3' | 'eac3' | 'mp2'; video?: 'h264' | 'hevc' | 'hevc10'; perConnectionBps?: number; oneStreamOnly?: boolean; uneven?: boolean; maxConnections?: number } = {}) {
+export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer }; cors?: boolean; catalogSizes?: Partial<Record<'live' | 'vod' | 'series', number>>; videoSize?: string; videoBitrate?: string; videoDuration?: number; live?: boolean; audio?: 'aac' | 'ac3' | 'eac3' | 'mp2'; video?: 'h264' | 'hevc' | 'hevc10'; perConnectionBps?: number; oneStreamOnly?: boolean; uneven?: boolean; maxConnections?: number; icons?: boolean } = {}) {
   const directory = fs.mkdtempSync(path.join(tmpdir(), 'kiyi-fixture-'));
   const credentials = { username: randomBytes(12).toString('hex'), password: randomBytes(24).toString('hex') };
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `testsrc2=size=${options.videoSize || '640x360'}:rate=25`, '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', String(options.videoDuration || 12), ...(options.video === 'hevc' || options.video === 'hevc10'
@@ -15,6 +15,10 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
       : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-g', '50']), ...(options.videoBitrate ? ['-b:v', options.videoBitrate] : []), '-c:a', options.audio || 'aac', '-b:a', options.audio === 'mp2' ? '192k' : options.audio ? '384k' : '64k', '-movflags', '+faststart', path.join(directory, 'pattern.mp4')]);
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-i', path.join(directory, 'pattern.mp4'), '-c', 'copy', '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename', path.join(directory, 'part%d.ts'), path.join(directory, 'pattern.m3u8')]);
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-i', path.join(directory, 'pattern.mp4'), '-c', 'copy', '-f', 'mpegts', path.join(directory, 'pattern.ts')]);
+  // Poster pictures for the lists: every row points at one small PNG, except the second live
+  // channel, whose address answers 404, so both the picture and its fallback can be checked.
+  if (options.icons) execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x3377cc:s=64x96', '-frames:v', '1', path.join(directory, 'icon.png')]);
+  const iconRequests: string[] = [];
   let requests = 0, streaming = 0, refused = 0, maxConnections = options.maxConnections ?? (options.oneStreamOnly ? 1 : 2);
   const agents: string[] = [];
   const segments = fs.readdirSync(directory).filter(name => /^part\d+\.ts$/.test(name)).sort((a, b) => Number(a.replace(/\D/g, '')) - Number(b.replace(/\D/g, '')));
@@ -29,6 +33,12 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
     requests++;
     if (typeof req.headers['user-agent'] === 'string') agents.push(req.headers['user-agent']);
     const url = new URL(req.url!, 'http://fixture.invalid');
+    const icon = (name: string) => options.icons ? { stream_icon: `http://${req.headers.host}/icons/${name}.png` } : {};
+    if (url.pathname.startsWith('/icons/')) {
+      iconRequests.push(url.pathname);
+      if (url.pathname === '/icons/missing.png') { res.writeHead(404).end(); return; }
+      res.writeHead(200, { 'Content-Type': 'image/png' }).end(fs.readFileSync(path.join(directory, 'icon.png'))); return;
+    }
     if (options.cors) res.setHeader('Access-Control-Allow-Origin', '*');
     if (url.pathname === '/player_api.php') {
       res.setHeader('Content-Type', 'application/json');
@@ -39,9 +49,9 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
       let data: unknown;
       if (!action) data = { user_info: { auth: 1, status: 'Active', exp_date: String(now + 86400), active_cons: '0', max_connections: String(maxConnections) } };
       else if (action.endsWith('_categories')) data = [{ category_id: '1', category_name: 'Test laboratuvarı' }, { category_id: '2', category_name: 'Boş kategori' }];
-      else if (action === 'get_live_streams') data = url.searchParams.get('category_id') === '2' ? [] : !url.searchParams.has('category_id') && options.catalogSizes?.live ? largeCatalog('live', options.catalogSizes.live) : [{ stream_id: 1, name: 'Sentetik test yayını', category_id: '1' }, { stream_id: 2, name: 'İstanbul test deseni', category_id: '1' }];
-      else if (action === 'get_vod_streams') data = !url.searchParams.has('category_id') && options.catalogSizes?.vod ? largeCatalog('vod', options.catalogSizes.vod) : [{ stream_id: 3, name: 'Test filmi', category_id: '1', container_extension: 'mp4' }];
-      else if (action === 'get_series') data = !url.searchParams.has('category_id') && options.catalogSizes?.series ? largeCatalog('series', options.catalogSizes.series) : [{ series_id: 4, name: 'Test dizisi', category_id: '1' }];
+      else if (action === 'get_live_streams') data = url.searchParams.get('category_id') === '2' ? [] : !url.searchParams.has('category_id') && options.catalogSizes?.live ? largeCatalog('live', options.catalogSizes.live) : [{ stream_id: 1, name: 'Sentetik test yayını', category_id: '1', ...icon('1') }, { stream_id: 2, name: 'İstanbul test deseni', category_id: '1', ...icon('missing') }];
+      else if (action === 'get_vod_streams') data = !url.searchParams.has('category_id') && options.catalogSizes?.vod ? largeCatalog('vod', options.catalogSizes.vod) : [{ stream_id: 3, name: 'Test filmi', category_id: '1', container_extension: 'mp4', ...icon('3') }];
+      else if (action === 'get_series') data = !url.searchParams.has('category_id') && options.catalogSizes?.series ? largeCatalog('series', options.catalogSizes.series) : [{ series_id: 4, name: 'Test dizisi', category_id: '1', ...(options.icons ? { cover: `http://${req.headers.host}/icons/4.png` } : {}) }];
       else if (action === 'get_vod_info') data = { info: { name: 'Test filmi', plot: 'Bu video yalnızca otomatik olarak üretilmiş bir renk ve hareket desenidir.', genre: 'Teknik test', duration: '00:00:12', rating: '10' }, movie_data: { stream_id: 3 } };
       else if (action === 'get_series_info') data = { info: { name: 'Test dizisi', plot: 'Sentetik bölümler.' }, episodes: { '1': [{ id: '5', title: 'Birinci test', episode_num: 1, season: 1, container_extension: 'mp4' }], '2': [{ id: '6', title: 'İkinci test', episode_num: 1, season: 2, container_extension: 'mp4' }] } };
       else if (action === 'get_short_epg') data = { epg_listings: [{ id: 1, title: b64('Şimdi: Görüntü testi'), description: b64('Yerel üretilen renk ve ses deseni.'), start_timestamp: now - 600, stop_timestamp: now + 1800 }, { id: 2, title: b64('Sırada: Ses testi'), description: '', start_timestamp: now + 1800, stop_timestamp: now + 3600 }] };
@@ -94,6 +104,6 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
   const server = options.tls ? https.createServer(options.tls, serve) : http.createServer(serve);
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as { port: number };
-  return { credentials: { ...credentials, server: `${options.tls ? 'https' : 'http'}://127.0.0.1:${address.port}` }, directory, requestCount: () => requests, catalogRequests: () => catalogRequests, userAgents: () => agents.slice(), refusedCount: () => refused, setMaxConnections: (count: number) => { maxConnections = count; },
+  return { credentials: { ...credentials, server: `${options.tls ? 'https' : 'http'}://127.0.0.1:${address.port}` }, directory, requestCount: () => requests, catalogRequests: () => catalogRequests, userAgents: () => agents.slice(), refusedCount: () => refused, iconRequests: () => iconRequests.slice(), setMaxConnections: (count: number) => { maxConnections = count; },
     close: async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); } };
 }

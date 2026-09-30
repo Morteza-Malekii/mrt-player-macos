@@ -2,6 +2,14 @@ import type { Account, Category, Credentials, Detail, Episode, Item, Kind } from
 import { AppError, id, invalid, object, text } from './errors';
 import { normalizeEpg } from './epg';
 export interface Transport { json(url: string): Promise<unknown> }
+// A poster address from a catalogue row (`stream_icon` on live and film rows, `cover` on
+// series rows). Only a plain absolute http(s) address is kept, with no login in it: the
+// provider chooses this text, and it is later fetched by the privileged process.
+export function imageUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 2048) return undefined;
+  try { const url = new URL(value.trim()); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined; }
+  catch { return undefined; }
+}
 export function normalizeCredentials(value: Credentials, allowHttp: boolean): Credentials {
   let url: URL;
   try { url = new URL(value.server.trim()); } catch { throw new AppError('SERVER', 'Sunucu adresini https://sunucu:port biçiminde girin.'); }
@@ -37,7 +45,7 @@ export class Xtream {
   async items(kind: Kind, category?: string): Promise<Item[]> {
     const rows = await this.request(kind === 'series' ? 'get_series' : `get_${kind}_streams`, category ? { category_id: id(category) } : {});
     if (!Array.isArray(rows)) throw new AppError('RESPONSE', 'Sunucu içerik listesini geçerli biçimde göndermedi.');
-    return rows.map(object).filter(x => /^\d+$/.test(text(x.stream_id ?? x.series_id))).map(x => ({ id: text(x.stream_id ?? x.series_id), kind, name: text(x.name, 250) || 'İsimsiz', categoryId: text(x.category_id), extension: this.extension(x.container_extension), rating: text(x.rating, 10) }));
+    return rows.map(object).filter(x => /^\d+$/.test(text(x.stream_id ?? x.series_id))).map(x => ({ id: text(x.stream_id ?? x.series_id), kind, name: text(x.name, 250) || 'İsimsiz', categoryId: text(x.category_id), icon: imageUrl(x.stream_icon ?? x.cover), extension: this.extension(x.container_extension), rating: text(x.rating, 10) }));
   }
   async epg(streamId: string) { return normalizeEpg(await this.request('get_short_epg', { stream_id: id(streamId), limit: '30' })); }
   async detail(kind: Kind, itemId: string): Promise<Detail> {

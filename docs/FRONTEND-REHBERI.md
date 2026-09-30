@@ -293,9 +293,11 @@ onError)` oynatıcıyı kurar ve **bir dispose fonksiyonu döndürür**. Çağı
   `@media (max-width:1200px)`; ayrıca `prefers-reduced-motion` desteği var.
 - `:focus-visible` ile 3 px açık yeşil odak halkası: klavye ve TV kumandası
   için kritik.
-- Afiş görselleri yok. Sebep: CSP `img-src 'self' data:` diyor, yani uygulama
-  dışarıdan resim yükleyemez. Filmler `poster tone-N` renkli karolarla
-  çizilir. `Item.icon` tipte var ama `Xtream.items` onu hiç doldurmaz.
+- Afişler `Poster` bileşeniyle ([Poster.tsx](../src/ui/Poster.tsx)) gösterilir.
+  CSP `img-src 'self' data: kiyi:` der; yani sayfa yalnızca uygulamanın kendi
+  `kiyi://image/<tür>/<id>` adresinden resim alır, sağlayıcının adresinden
+  değil. Resim yüklenene kadar, yoksa veya hata verirse `poster tone-N` renkli
+  karo ve baş harfler görünür (fallback).
 
 ### 3.6 Erişilebilirlik = test seçicisi
 
@@ -477,7 +479,8 @@ macOs/
 | [errors.ts](../src/core/errors.ts) | `AppError`, `publicError()`, doğrulama yardımcıları `object()`, `text()`, `id()` |
 | [xtream.ts](../src/core/xtream.ts) | `Xtream` sınıfı: `authenticate`, `categories`, `items`, `epg`, `detail`, `stream`; `normalizeCredentials()` ve `parseKind()` |
 | [epg.ts](../src/core/epg.ts) | Program rehberi verisini temizler; sağlayıcının base64 veya düz metnini çözer (`decodeText`) |
-| [library.ts](../src/core/library.ts) | Favori/geçmiş/tercih kuralları: `normalizeLibrary`, `toggleFavorite`, `remember`, `cleanItem` |
+| [library.ts](../src/core/library.ts) | Favori/geçmiş/tercih/kilit kuralları: `normalizeLibrary`, `toggleFavorite`, `remember`, `cleanItem` |
+| [lock.ts](../src/core/lock.ts) | Liste kilidi: `makePin`/`checkPin` (PBKDF2, WebCrypto), `lockKey`, `isLockedItem`, `validPin` |
 
 Önemli noktalar:
 
@@ -537,6 +540,7 @@ macOs/
 | [preload.ts](../src/platform/mac/preload.ts) | preload | `window.kiyi.call` köprüsü ve eylem beyaz listesi |
 | [adapter.ts](../src/platform/mac/adapter.ts) | renderer | `platform` nesnesi: `call` (köprüyü sarar), `attach` (oynatıcı motorlarını yönetir), `exit` |
 | [media.ts](../src/platform/mac/media.ts) | main | `MediaGateway`: medya vekili (bölüm 8) |
+| [images.ts](../src/platform/mac/images.ts) | main | `ImageGateway`: afiş/logo vekili (bölüm 8.5) |
 
 `main.ts` neler yapar:
 
@@ -547,6 +551,7 @@ macOs/
    - `kiyi://app/...` → yalnızca `index.html`, `app.js`, `app.css` dosyalarını
      `dist/app/` içinden sunar. Yanıta CSP başlığı ekler.
    - `kiyi://media/<jeton>` → `MediaGateway.handle()`.
+   - `kiyi://image/<tür>/<id>` → `ImageGateway.handle()` ([images.ts](../src/platform/mac/images.ts)).
 4. Tüm izin isteklerini reddeder; yeni pencere açmayı ve sayfa
    yönlendirmesini engeller.
 5. `ipcMain.handle('kiyi:call')`: gönderenin ana pencerenin ana çerçevesi ve
@@ -565,7 +570,8 @@ macOs/
 | [PlaybackStats.tsx](../src/ui/PlaybackStats.tsx) | `PlaybackStats` | "Akış bilgisi" paneli (çözünürlük, tampon, kare kaybı, sunucu hızı...) |
 | [Guide.tsx](../src/ui/Guide.tsx) | `Guide` | Canlı kanalın program rehberi (EPG) |
 | [Details.tsx](../src/ui/Details.tsx) | `Details` | Film/dizi ayrıntı penceresi, sezon ve bölüm listesi |
-| [Settings.tsx](../src/ui/Settings.tsx) | `Settings` | Tercihler formu |
+| [Settings.tsx](../src/ui/Settings.tsx) | `Settings` | Tercihler formu ve "Liste kilidi" kartı |
+| [LockDialog.tsx](../src/ui/LockDialog.tsx) | `LockDialog` | PIN belirleme / doğrulama / değiştirme penceresi; hatalı deneme sınırı |
 | [Modal.tsx](../src/ui/Modal.tsx) | `Modal` | Odak tuzağı olan iletişim penceresi (Tab dışarı çıkmaz) |
 | [Icon.tsx](../src/ui/Icon.tsx) | `Icon` | SVG simge; yol verileri tek bir `paths` tablosunda |
 | [navigation.ts](../src/ui/navigation.ts) | `useRemote` | TV kumandası yön tuşu gezinmesi. **macOS'ta kullanılmıyor** (bkz. bölüm 15) |
@@ -708,6 +714,7 @@ Kalbe tıklama → update(current => toggleFavorite(current, item))
 `keydown` dinleyicisi koyar ve `Escape` (TV'de `461`) tuşunu sırayla şu
 katmanlara uygular; ilk uyan çalışır:
 
+0. PIN penceresi açıksa kapat
 1. Tam ekran açıksa kapat
 2. Ayrıntı penceresi açıksa kapat
 3. Çıkış onayı açıksa kapat
@@ -719,6 +726,26 @@ katmanlara uygular; ilk uyan çalışır:
 
 Bu "geri yığını"dır. Yeni bir katman (yeni modal gibi) eklersen bu zincire de
 eklenmelidir.
+
+### 6.6.1 Liste kilidi
+
+Kullanıcı istediği kategoriyi (canlı, film veya dizi) PIN ile kilitleyebilir.
+
+- **Veri:** `Library.locks = { pin?: { salt, hash }, categories: ['live:5', 'vod:5'] }`.
+  Anahtar `tür:kategoriId` biçimindedir, çünkü kategori numaraları türler arasında
+  tekrar eder. PIN yalnızca tuzlu PBKDF2 özeti olarak, hesabın kitaplık dosyasında
+  durur. `normalizeLibrary` PIN'siz kilidi atar (açılamayacak kilit anlamsızdır).
+- **Durum:** "kilitler açık mı" bilgisi (`unlocked`) yalnızca bellekte, `Workspace`
+  state'indedir. Bir PIN tüm kilitli listeleri pencere boyunca açar; "Listeleri
+  yeniden kilitle" veya uygulamadan çıkış bunu sıfırlar. Kilitlenirken çalan kanal
+  durdurulur.
+- **Gizleme:** kilitliyken o kategorinin içeriği liste, "Tüm içerikler", arama,
+  favoriler ve son izlenenlerden çıkarılır (`source` memo'su). Bölümlerin
+  `categoryId`'si boştur; bu yüzden `Details.tsx` bölümü oynatırken dizinin
+  kategorisini ekler, yoksa kilitli dizinin bölümü geçmişte görünürdü.
+- **Hesabı cihazdan silmek** kilitleri de siler; PIN unutulursa tek sıfırlama yolu budur.
+- **Sınır:** bu, çocuk ve ev içi gizlilik içindir. Filtre arayüzde yapılır; kitaplık
+  dosyasına erişebilen biri özeti görebilir (yalnızca özet, PIN değil).
 
 ### 6.7 Çıkış ve kilitleme
 
@@ -847,6 +874,36 @@ bağlamı olmadan geri çağrı olarak verilirler ve `this` kaybolmamalıdır.
 - **Yerel motor, canlı HLS:** Chromium tamponu kendisi yönettiği için `buffer`
   bu yolda etkisizdir. Canlı yayın artık bu yola girmediği için pratikte önemsizdir.
 
+### 8.5 Afişler (`ImageGateway`)
+
+Kanal logosu ve film/dizi afişi, medya vekilinden ayrı bir vekille gelir:
+
+- **Adres arayüze çıkmaz.** `Xtream.items` katalog satırından `stream_icon` (canlı,
+  film) veya `cover` (dizi) alanını `Item.icon`'a okur ve `imageUrl()` ile süzer
+  (yalnızca düz http/https, içinde kullanıcı adı yok, en çok 2048 karakter).
+  `Session` bu adresi kendi belleğinde tutar ve arayüze giden satırdan **siler**;
+  sayfa yalnızca `kiyi://image/<tür>/<id>` bilir.
+- **Neden ayrı vekil?** Medya jetonları her kanal değişiminde silinir ve tek
+  bağlantılı hesapta istekler sıraya girer. Afişler bunların hiçbirine
+  takılmamalı: aksi halde kanal açınca liste boşalır, bir ekran dolusu afiş
+  videoyu bekletirdi.
+- **Güvenlik:** yalnızca raster görsel türleri geçer (SVG yok), en çok 4 MB,
+  en çok 4 eşzamanlı istek. Yanıt `no-store`; kopyaları bellekte (48 MB, LRU)
+  vekilin kendisi tutar, çünkü aynı `tür/id` yolu başka hesapta başka resimdir.
+  Bulunamayan resim 10 dakika hatırlanır, yoksa her kaydırma sağlayıcıya yeniden
+  sorardı.
+- **Favori ve geçmiş afişleri:** kitaplık dosyası hiçbir adres içermez
+  (`cleanItem` değişmedi). Favori ve son izlenenlerin adresleri, arayüzün görmediği
+  ayrı bir dosyada (`icons-<profil>.json`) `Session` tarafından tutulur ve `library`
+  eyleminde belleğe geri yüklenir. "Hesabı cihazdan sil" bu dosyayı da siler.
+- **Ayar:** Ayarlar → "Kanal ve film afişlerini göster" (`preferences.posters`,
+  **varsayılan kapalı**; yalnızca açıkça `true` olan değer açar). Kapalıyken
+  arayüz `<img>` oluşturmaz, ama asıl güvence ana süreçtedir: `Session` tercih
+  kapalıyken `posterUrl` ile hiçbir adres vermez (arayüz ne isterse istesin ağa
+  çıkılmaz) ve favori/geçmiş adres dosyasını boşaltır. Tercih değişince arayüz
+  önce kaydeder (`flush`), sonra reddedilmiş resimler yeniden denesin diye
+  `Poster`'ları yeniden oluşturur (`posterEpoch`).
+
 ### 8.4 Akış bilgisi paneli ve teşhis
 
 `PlaybackStats` her saniye örnek alır: çözünürlük, ön tampon, atlanan kare,
@@ -893,6 +950,7 @@ Backend geliştirici gözüyle kontrol listesi:
 | İzin, yeni pencere ve yönlendirme reddi | `main.ts` | Kamera/mikrofon izni, pop-up, sayfadan çıkış |
 | `kiyi://app` yalnızca 3 dosya sunar | `protocol.handle` | Yol gezinme (path traversal) |
 | Opak medya jetonları | [media.ts](../src/platform/mac/media.ts) | Şifre içeren URL'nin arayüze sızması |
+| Afiş adresi yalnızca ana süreçte; SVG yok, boyut ve eşzamanlılık sınırı | [images.ts](../src/platform/mac/images.ts), `Session` | Sağlayıcı görsel sitesinin arayüze sızması, sayfada betik çalıştırma |
 | `id()`, `parseKind()`, `normalizeCredentials()` | `core` | URL/parametre enjeksiyonu |
 | `publicError()` | [errors.ts](../src/core/errors.ts) | Ham hata veya URL'nin kullanıcıya gitmesi |
 | Yönlendirme sınırı, TLS doğrulaması açık | [http.ts](../src/runtime/http.ts) | https→http düşürme, başka hosta kimlik sızması |
@@ -1067,6 +1125,8 @@ testin sınırı bulanıktır. Backend'deki entegrasyon testine benzer.
 | `test:cushion`, `test:cushion:safety` | Büyük tampon beklemesi ve **asla kilitlenmemesi** |
 | `test:rate` | Hız ölçümünün doğruluğu |
 | `test:keychain` | Kayıtlı hesap, Anahtar Zinciri, kilit açma, silme |
+| `test:lock` | Liste kilidi: PIN belirleme, gizleme, yeniden kilitle, hatalı deneme sınırı, kalıcılık |
+| `test:posters` | Afiş/logo: görünüm, eksik görselde baş harfler, kapatma, adresin sayfada ve kitaplıkta olmaması, favori afişinin kalıcılığı |
 | `test:integration` | Electron'suz: Xtream + vekil + büyük katalog |
 | `test:packaged`, `test:4k:packaged` | Aynı testler, ama `release/` içindeki gerçek `.app` ile (`KIYI_TEST_PACKAGED=1`) |
 
@@ -1093,9 +1153,9 @@ takıldığını da doğrular). Yeni bir test yazarken bu alışkanlığı sürd
    (`test:e2e` genelde yeterli başlangıçtır).
 5. Bitirmeden `npm run check`.
 
-> **Öneri:** Depoda henüz hiç commit yok (`git status`: tüm dosyalar
-> untracked). Denemeye başlamadan önce mevcut hali commit'lemeni öneririm ki
-> her değişikliği `git diff` ile görebilir ve geri alabilesin.
+> **Not:** Depoda artık commit geçmişi var. Denemeye başlamadan önce çalışma
+> ağacının temiz olduğundan emin ol (`git status`); böylece her değişikliği
+> `git diff` ile görebilir ve `git restore` ile geri alabilirsin.
 
 ### 13.2 Tarif: yeni bir ayar (Preference) eklemek
 
@@ -1238,13 +1298,13 @@ Kodu okurken tespit ettiklerim. Hiçbirini değiştirmedim.
 6. **Oynatıcıda artık ulaşılmayan kod yolları var.** `adapter.ts` içindeki
    mpegts.js dalı, canlıda yerel HLS dalı ve `buffer: 'normal'` davranışı
    `Session` tarafından üretilmiyor; yalnızca `Playback` sözleşmesi olarak
-   duruyor. Silmek istersen `mpegts.js` bağımlılığı da gider. Depoda commit
-   olmadığı için silmeden önce bir commit al.
+   duruyor. Silmek istersen `mpegts.js` bağımlılığı da gider. Silmeden önce
+   çalışma ağacının temiz olduğundan emin ol; `git` geri almayı kolaylaştırır.
 7. **`shared:check` şu an başarısız** (bölüm 13.7). Bu bir hata değil, bilinen
    durum.
 8. **Otomatik biçimlendirme ve lint yok.** Tek koruma tip denetimi ve testler.
 9. **Hot reload yok.** Her değişiklik yeniden başlatma ister.
-10. **Git geçmişi yok.** Henüz commit bulunmuyor (bkz. 13.1).
+10. **Git geçmişi kısa.** İlk commit yakın zamanda atıldı (bkz. 13.1); eski sürümlerin tek kaydı `docs/VALIDATION.md`.
 11. **E2E testleri GUI ve macOS ister** (gerçek pencere, `hevc_videotoolbox`);
     başsız CI ortamında olduğu gibi çalışmaz.
 12. **Sanal liste yok.** Çok büyük bir listeyi tek seferde çizmeye çalışırsan

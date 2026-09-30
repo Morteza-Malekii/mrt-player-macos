@@ -6,6 +6,7 @@ import { Session, type Vault } from '../../runtime/session';
 import { FileLibraryStore, atomicWrite, exists, remove } from '../../runtime/storage';
 import { AppError } from '../../core/errors';
 import { MediaGateway } from './media';
+import { ImageGateway } from './images';
 import type { Action, Credentials } from '../../core/models';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'kiyi', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -30,12 +31,13 @@ if (fs.existsSync(previousData)) app.setPath('userData', previousData);
 // Automated release validation uses a disposable profile path; no credentials are passed in env.
 if (process.env.KIYI_TEST_MODE === '1' && process.env.KIYI_TEST_DATA && path.isAbsolute(process.env.KIYI_TEST_DATA)) app.setPath('userData', process.env.KIYI_TEST_DATA);
 app.whenReady().then(async () => {
-  const gateway = new MediaGateway(), data = app.getPath('userData');
+  const gateway = new MediaGateway(), images = new ImageGateway(), data = app.getPath('userData');
   const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', gateway.add, gateway.clear, gateway.stats, gateway.useLimit);
-  const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src kiyi: blob:; connect-src kiyi:; worker-src blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
+  const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: kiyi:; media-src kiyi: blob:; connect-src kiyi:; worker-src blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
   protocol.handle('kiyi', async request => {
     const url = new URL(request.url);
     if (url.host === 'media') return gateway.handle(request);
+    if (url.host === 'image') return images.handle(request, runtime.posterUrl);
     if (url.host !== 'app') return new Response(null, { status: 404 });
     const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
     if (!['index.html', 'app.js', 'app.css'].includes(name)) return new Response(null, { status: 404 });

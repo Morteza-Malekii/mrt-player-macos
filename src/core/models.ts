@@ -9,9 +9,13 @@ export interface Episode extends Item { season: number; episode: number; plot?: 
 export interface Detail { title: string; plot: string; genre: string; cast: string; director: string; year: string; duration: string; rating: string; extension?: string; episodes: Episode[] }
 export interface Playback { url: string; format: 'hls' | 'file' | 'ts'; live: boolean; engine?: 'js'; buffer?: Buffering }
 export type Buffering = 'normal' | 'large';
-export interface Preferences { volume: number; muted: boolean; resume: boolean }
+export interface Preferences { volume: number; muted: boolean; resume: boolean; posters: boolean }
 export interface Recent { item: Item; at: number; position: number }
-export interface Library { favorites: Item[]; recent: Recent[]; preferences: Preferences }
+// A PIN that keeps chosen categories out of sight. Only a salted hash is stored; `categories`
+// holds `kind:categoryId` keys, because category ids repeat across live, film and series.
+export interface PinRecord { salt: string; hash: string }
+export interface Locks { pin?: PinRecord; categories: string[] }
+export interface Library { favorites: Item[]; recent: Recent[]; preferences: Preferences; locks: Locks }
 export interface Status { saved: boolean; requiresPassphrase: boolean; platform: 'mac' | 'tv' | 'preview' }
 // Cumulative counters from the media path, so the stream panel can show whether the provider
 // is keeping up. Platforms without a media gateway report null and the rows stay hidden.
@@ -20,5 +24,5 @@ export interface Reply<T = unknown> { ok: boolean; data?: T; error?: { code: str
 export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats';
 export interface Bridge { call<T>(action: Action, payload?: unknown): Promise<T> }
 export interface Platform extends Bridge { type: 'mac' | 'tv' | 'preview'; attach(video: HTMLVideoElement, playback: Playback, onError: (message: string) => void): () => void; exit(): void }
-export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true } };
+export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true, posters: false }, locks: { categories: [] } };
 export const itemKey = (item: Item) => `${item.kind}:${item.isEpisode ? 'episode:' : ''}${item.id}`;

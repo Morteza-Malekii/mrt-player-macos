@@ -19,6 +19,8 @@
     "test:recover": "npm run build && tsx scripts/e2e-recover.ts",
     "test:lanes": "npm run build && tsx scripts/e2e-lanes.ts",
     "test:solo": "npm run build && tsx scripts/e2e-solo.ts",
+    "test:posters": "npm run build && tsx scripts/e2e-posters.ts",
+    "test:lock": "npm run build && tsx scripts/e2e-lock.ts",
     "test:cushion": "npm run build && tsx scripts/e2e-cushion.ts",
     "test:cushion:safety": "npm run build && tsx scripts/e2e-cushion-safety.ts",
     "test:rate": "npm run build && tsx scripts/e2e-rate.ts",

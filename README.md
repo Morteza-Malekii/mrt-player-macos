@@ -44,6 +44,19 @@ rehberinden alınır. Sağdaki oynatıcı tam ekrana geçebilir; VOD içinde sar
 ses ve duraklatma vardır. Alanlar arasında Tab, seçim için Enter; `Esc` geri,
 `F` tam ekran, `M` sessiz, boşluk oynat/duraklat kullanılır.
 
+Herhangi bir kategoriyi (örneğin yetişkin kanalları) kilitlemek için kategori
+adının yanındaki kilit simgesine tıklayın. İlk kilitte 4–8 haneli bir PIN belirlenir.
+Kilitli liste; kategori, **Tüm içerikler**, arama, favoriler ve son izlenenlerde
+PIN girilene kadar gizlenir. PIN tüm kilitli listeleri açar; soldaki **Listeleri
+yeniden kilitle** veya uygulamadan çıkış tekrar gizler. Ayarlar → Liste kilidi
+altında PIN değiştirilir, tüm kilitler kaldırılır. PIN unutulursa hesabı cihazdan
+silmek tek sıfırlama yoludur. Bu özellik çocuk ve ev içi gizlilik içindir.
+
+Ayarlar → **Kanal ve film afişlerini göster** açılırsa kanal ve film listelerinde
+sağlayıcının verdiği logo veya afiş adın yanında görünür; görsel yoksa veya yüklenemezse kanalın baş harfleri gösterilir. Görseller
+sayfaya değil ana sürece indirilir ve sayfa yalnızca opak `kiyi://image/...` adresini
+görür.
+
 Büyük listelerde uygulama önce ilk kategoriyi yükler; tüm kataloğu görmek veya
 genel arama yapmak için **Tüm içerikler**'i seçin. Oynatma ayarı yoktur: canlı
 yayın HLS olarak hls.js ile, geniş tamponla açılır; film paralel indirmeyi hesabın
@@ -56,7 +69,12 @@ Anahtar Zinciri anahtarı kullanılarak şifrelenir. Kategori favorileri, izleme
 geçmişi ve ayarlar yerel uygulama veri dizininde tutulur. Oynatıcıya hesap URL'si
 aktarılmaz; Mac ana süreç HLS ve VOD verisini opak medya adresleriyle iletir.
 Hiçbir uzak MRT-Player sunucusu yoktur; ağ bağlantısı yalnızca girdiğiniz Xtream
-sunucusuna ve sağlayıcının medya yönlendirmelerine yapılır.
+sunucusuna, sağlayıcının medya yönlendirmelerine ve **afişler açıksa** sağlayıcının
+listede verdiği görsel adreslerine yapılır. Afişler **varsayılan olarak kapalıdır**;
+siz açmadıkça sağlayıcı dışında hiçbir siteye bağlanılmaz. Açarsanız bu adresler
+çoğu zaman aynı sunucudadır ama başka bir CDN veya üçüncü taraf bir görsel sitesi
+de olabilir; o durumda o site IP adresinizi ve hangi listeyi açtığınızı görür.
+Uygulama telemetri, istatistik veya hata raporu göndermez ve günlük dosyası tutmaz.
 
 ## Doğrulama ve geliştirme
 
@@ -73,6 +91,8 @@ npm run test:cushion
 npm run test:cushion:safety
 npm run test:rate
 npm run test:keychain
+npm run test:lock
+npm run test:posters
 npm run test:packaged
 npm run test:4k:packaged
 ```
