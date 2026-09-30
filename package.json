@@ -1,0 +1,49 @@
+{
+  "name": "mrt-player-macos",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "description": "Kişisel Xtream oynatıcı",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "package": "npm run check && node scripts/package.mjs",
+    "test:integration": "tsx scripts/integration.ts",
+    "test:e2e": "npm run build && tsx scripts/e2e.ts",
+    "test:4k": "npm run build && tsx scripts/e2e-4k.ts",
+    "test:switch": "npm run build && tsx scripts/e2e-switch.ts",
+    "test:recover": "npm run build && tsx scripts/e2e-recover.ts",
+    "test:lanes": "npm run build && tsx scripts/e2e-lanes.ts",
+    "test:solo": "npm run build && tsx scripts/e2e-solo.ts",
+    "test:cushion": "npm run build && tsx scripts/e2e-cushion.ts",
+    "test:cushion:safety": "npm run build && tsx scripts/e2e-cushion-safety.ts",
+    "test:rate": "npm run build && tsx scripts/e2e-rate.ts",
+    "test:4k:packaged": "KIYI_TEST_PACKAGED=1 tsx scripts/e2e-4k.ts",
+    "test:packaged": "KIYI_TEST_PACKAGED=1 tsx scripts/e2e.ts",
+    "test:keychain": "npm run build && tsx scripts/keychain.ts",
+    "shared:check": "node scripts/shared.mjs check",
+    "shared:sync": "node scripts/shared.mjs sync"
+  },
+  "dependencies": {
+    "hls.js": "1.7.3",
+    "mpegts.js": "1.8.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.18.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "electron": "44.4.3",
+    "esbuild": "0.28.2",
+    "ffmpeg-static": "^5.3.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3"
+  }
+}

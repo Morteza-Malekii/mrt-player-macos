@@ -1,0 +1,64 @@
+import { expect, type Page } from '@playwright/test';
+export async function checkMvp(page: Page, target: 'mac' | 'tv') {
+  await expect(page.getByRole('heading', { name: 'Şimdi: Görüntü testi', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Duraklat', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await page.getByRole('button', { name: 'Sesi kapat', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
+  await page.getByRole('button', { name: 'Tam ekran', exact: true }).click();
+  await expect(page.locator('.player-full')).toBeVisible();
+  if (target === 'tv') await page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {keyCode:461,bubbles:true}))"); else await page.keyboard.press('Escape');
+  await expect(page.locator('.player-full')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Sentetik test yayını favorilere ekle', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sentetik test yayını favorilerden çıkar', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: /^Favoriler/ }).click();
+  await expect(page.getByRole('button', { name: 'Sentetik test yayını', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Canlı TV', exact: true }).click();
+  await page.getByLabel('İçerik ara').fill('istanbul');
+  await expect(page.getByRole('button', { name: 'İstanbul test deseni', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sentetik test yayını', exact: true })).toHaveCount(0);
+  await page.getByLabel('İçerik ara').fill('bulunmayan kayıt');
+  await expect(page.getByRole('heading', { name: 'Sonuç bulunamadı' })).toBeVisible();
+  await page.getByRole('button', { name: 'Aramayı temizle' }).click();
+  await page.getByRole('button', { name: 'Boş kategori', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Bu kategori boş' })).toBeVisible();
+  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await page.getByRole('button', { name: 'Filmler', exact: true }).click();
+  await page.getByRole('button', { name: 'Test filmi', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByText('Bu video yalnızca otomatik olarak üretilmiş bir renk ve hareket desenidir.')).toBeVisible();
+  await page.screenshot({ path: `test-results/${target}-detail.png` });
+  await page.getByRole('button', { name: 'Filmi oynat' }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 20000 }).toBeGreaterThan(0.5);
+  await page.getByRole('button', { name: 'Duraklat', exact: true }).click();
+  await page.getByRole('button', { name: '10 saniye ileri' }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(9);
+  await page.getByRole('button', { name: '10 saniye geri' }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(3);
+  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await page.getByRole('button', { name: 'Diziler', exact: true }).click();
+  await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
+  await page.getByLabel('Sezon', { exact: true }).selectOption('2');
+  await expect(page.getByRole('button', { name: /İkinci test/ })).toBeVisible();
+  await page.screenshot({ path: `test-results/${target}-series.png` });
+  await page.getByRole('button', { name: /İkinci test/ }).click();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 20000 }).toBeGreaterThan(0.5);
+  if (target === 'tv') {
+    await page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {keyCode:19,bubbles:true}))");
+    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+    await page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {keyCode:415,bubbles:true}))");
+    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  }
+  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await page.getByRole('button', { name: 'Son izlenenler', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'İkinci test', exact: true })).toBeVisible();
+  // An episode in history must reopen the episode, not request series details using its id.
+  await page.getByRole('button', { name: 'İkinci test', exact: true }).click();
+  await expect(page.locator('video')).toHaveCount(1); await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await page.getByRole('button', { name: 'Ayarlar', exact: true }).click();
+  await page.getByLabel('Film ve bölümlerde kaldığım yerden devam et').uncheck();
+  await page.screenshot({ path: `test-results/${target}-settings.png` });
+  await page.getByRole('button', { name: 'Oturumu kilitle' }).click();
+  await expect(page.getByRole('heading', { name: 'Hesabınıza bağlanın' })).toBeVisible();
+}

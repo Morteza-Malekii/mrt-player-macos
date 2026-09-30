@@ -1,0 +1,33 @@
+import { _electron as electron, expect } from '@playwright/test';
+import { createFixture } from './fixture';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+const fixture = await createFixture(), data = await mkdtemp(path.join(tmpdir(), 'kiyi-keychain-'));
+const env = { ...process.env, KIYI_TEST_DATA: data, KIYI_TEST_MODE: '1' } as Record<string, string>;
+delete env.ELECTRON_RUN_AS_NODE;
+const app = await electron.launch({ args: ['scripts/electron-test-main.cjs'], env });
+try {
+  const page = await app.firstWindow();
+  await page.getByLabel('Sunucu adresi').fill(fixture.credentials.server);
+  await page.getByLabel('Kullanıcı adı').fill(fixture.credentials.username);
+  await page.getByLabel('Şifre', { exact: true }).fill(fixture.credentials.password);
+  await page.getByRole('checkbox', { name: /HTTP/ }).check();
+  await page.getByRole('checkbox', { name: 'Bu cihazda güvenli sakla' }).check();
+  await page.getByRole('button', { name: /^Bağlan/ }).click();
+  await expect(page.getByRole('heading', { name: 'Canlı TV' })).toBeVisible();
+  const encrypted = await readFile(path.join(data, 'account.enc'));
+  assert.ok(encrypted.length > 0 && !encrypted.includes(Buffer.from(fixture.credentials.password)));
+  await page.getByRole('button', { name: 'Oturumu kilitle' }).click();
+  await expect(page.getByRole('heading', { name: 'Tekrar hoş geldiniz' })).toBeVisible();
+  await page.getByRole('button', { name: 'Kilidi aç' }).click();
+  await expect(page.getByRole('heading', { name: 'Canlı TV' })).toBeVisible();
+  await page.getByRole('button', { name: 'Sentetik test yayını favorilere ekle', exact: true }).click();
+  await page.getByRole('button', { name: 'Ayarlar' }).click();
+  await page.getByRole('button', { name: 'Hesabı cihazdan sil' }).click();
+  await expect(page.getByRole('heading', { name: 'Hesabınıza bağlanın' })).toBeVisible();
+  await assert.rejects(stat(path.join(data, 'account.enc')));
+  assert.equal((await readdir(data)).some(name => name.startsWith('library-')), false);
+  console.log('PASS: Anahtar Zinciri ile şifreli kayıt, kilit açma ve hesap silme. Test hesabı rastgele ve yalnızca loopback içindi.');
+} finally { await app.close(); await fixture.close(); await rm(data, { recursive: true, force: true }); }
