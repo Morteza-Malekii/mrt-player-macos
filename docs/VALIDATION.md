@@ -354,6 +354,31 @@
   afişleri istenmez (yalnızca görünen ilk 60 öğe istenir); Mac'e özgü, TV'de
   `Settings` bu seçeneği göstermiyor.
 
+## Liste yönetimi ve kutucuk düzeni (sürüm numarası artırılmadı)
+
+- Kanal, film ve diziler kutucuk ızgarasında gösteriliyor: resim kartı dolduruyor, ad
+  alt kenarda, filmde puan köşede. Logo/afiş yine yalnızca Ayarlar'da açılınca gelir
+  (varsayılan kapalı); kapalıyken kartlar baş harfler veya film/dizi simgesiyle çiziliyor.
+  Kategori listesine "Kategori ara" eklendi. Kategori adının yanındaki kilit simgeleri
+  kaldırıldı: kilitli liste de simgesiz, yalnızca içeriği gizli.
+- Kilit ve gizleme Ayarlar → Listeleri yönet bölümüne taşındı. Her kategori `Görünür`,
+  `Kilitli` veya `Gizli`. Gizli liste her yerde yok (liste, "Tüm içerikler", arama,
+  favoriler, son izlenenler) ve PIN girilince de açılmıyor. Gizli ile kilitli aynı
+  anda olamaz (birim testi). Varsayılan ilk kategori gizli olanları atlıyor.
+- PIN kuralı: kilitlemek ve gizlemek serbest; kilitli veya gizli bir listeyi Görünür
+  yapmak PIN varsa PIN istiyor. Kural kaldırılınca `test:lock` tam bu adımda başarısız
+  oluyor.
+- `test:lock` yeniden yazıldı: Ayarlar'dan kilitleme, kısa/uyuşmayan PIN reddi,
+  kategori listesinde hiç kilit simgesi olmaması, gizleme (iki liste), göstermek için
+  yanlış ve doğru PIN, yeniden kilitlemede oynatmanın durması, hatalı deneme sınırı,
+  yeniden başlatmada kilidin ve gizlemenin kalması, tüm kilitleri kaldırınca PIN
+  kalmadığı için gizli listenin serbestçe gösterilebilmesi.
+- `test:posters` yeni kart yapısına uyarlandı; geometri denetimi resmin kartı aşmadığını
+  ve adın resmin üstünde durduğunu doğruluyor.
+- Bilinen sınırlar: kategori başına içerik sayısı gösterilmiyor (Xtream kategori
+  yanıtında sayı yok; saymak tüm kataloğu indirmek demek olurdu). Eski favori/geçmiş
+  bölümlerinin kategorisi boş kayıtlı olduğundan gizlenemez.
+
 ## Dış doğrulama gerektiren sınır
 
 Fiziksel LG TV veya çalışan LG simülatörü verilmedi. Dolayısıyla `.ipk` kurulum,

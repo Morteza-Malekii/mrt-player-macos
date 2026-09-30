@@ -572,6 +572,8 @@ macOs/
 | [Details.tsx](../src/ui/Details.tsx) | `Details` | Film/dizi ayrıntı penceresi, sezon ve bölüm listesi |
 | [Settings.tsx](../src/ui/Settings.tsx) | `Settings` | Tercihler formu ve "Liste kilidi" kartı |
 | [LockDialog.tsx](../src/ui/LockDialog.tsx) | `LockDialog` | PIN belirleme / doğrulama / değiştirme penceresi; hatalı deneme sınırı |
+| [Tile.tsx](../src/ui/Tile.tsx) | `Tile` | Liste kartı: resim kartı doldurur, ad alt kenarda, film puanı köşede |
+| [CategoryManager.tsx](../src/ui/CategoryManager.tsx) | `CategoryManager` | Ayarlar → Listeleri yönet: her kategori için Görünür / Kilitli / Gizli |
 | [Modal.tsx](../src/ui/Modal.tsx) | `Modal` | Odak tuzağı olan iletişim penceresi (Tab dışarı çıkmaz) |
 | [Icon.tsx](../src/ui/Icon.tsx) | `Icon` | SVG simge; yol verileri tek bir `paths` tablosunda |
 | [navigation.ts](../src/ui/navigation.ts) | `useRemote` | TV kumandası yön tuşu gezinmesi. **macOS'ta kullanılmıyor** (bkz. bölüm 15) |
@@ -727,24 +729,31 @@ katmanlara uygular; ilk uyan çalışır:
 Bu "geri yığını"dır. Yeni bir katman (yeni modal gibi) eklersen bu zincire de
 eklenmelidir.
 
-### 6.6.1 Liste kilidi
+### 6.6.1 Liste yönetimi: görünür, kilitli, gizli
 
-Kullanıcı istediği kategoriyi (canlı, film veya dizi) PIN ile kilitleyebilir.
+Her kategori (canlı, film, dizi ayrı listelerdir) **üç durumdan birindedir**:
+`Visibility = 'shown' | 'locked' | 'hidden'`. Yönetim yeri Ayarlar → "Listeleri
+yönet" ([CategoryManager.tsx](../src/ui/CategoryManager.tsx)); kategori listesinde
+kilit simgesi yoktur.
 
-- **Veri:** `Library.locks = { pin?: { salt, hash }, categories: ['live:5', 'vod:5'] }`.
-  Anahtar `tür:kategoriId` biçimindedir, çünkü kategori numaraları türler arasında
-  tekrar eder. PIN yalnızca tuzlu PBKDF2 özeti olarak, hesabın kitaplık dosyasında
-  durur. `normalizeLibrary` PIN'siz kilidi atar (açılamayacak kilit anlamsızdır).
-- **Durum:** "kilitler açık mı" bilgisi (`unlocked`) yalnızca bellekte, `Workspace`
-  state'indedir. Bir PIN tüm kilitli listeleri pencere boyunca açar; "Listeleri
-  yeniden kilitle" veya uygulamadan çıkış bunu sıfırlar. Kilitlenirken çalan kanal
-  durdurulur.
-- **Gizleme:** kilitliyken o kategorinin içeriği liste, "Tüm içerikler", arama,
-  favoriler ve son izlenenlerden çıkarılır (`source` memo'su). Bölümlerin
-  `categoryId`'si boştur; bu yüzden `Details.tsx` bölümü oynatırken dizinin
-  kategorisini ekler, yoksa kilitli dizinin bölümü geçmişte görünürdü.
+- **Veri:** `Library.locks = { pin?, categories }` (kilitliler) ve `Library.hidden`
+  (gizliler); anahtar `tür:kategoriId`, çünkü numaralar türler arasında tekrar eder.
+  Bir kategori iki listede birden olamaz: `withCategoryState` ([lock.ts](../src/core/lock.ts))
+  durum değiştirir, `normalizeLibrary` çakışmada gizliyi tutar. PIN yalnızca tuzlu
+  PBKDF2 özeti olarak kitaplık dosyasındadır; PIN'siz kilit atılır (açılamaz).
+- **PIN kuralı (`App.setVisibility`):** kilitlemek ve gizlemek PIN istemez. Kilitli
+  veya gizli bir listeyi **Görünür** yapmak, PIN varsa PIN ister; yoksa çocuk
+  ayarlardan kolayca geri açardı. Gizliden kilitliye geçmek yalnızca adı gösterir,
+  içerik yine PIN ister.
+- **Açık durumu** (`unlocked`) yalnızca bellekte, `Workspace` state'indedir. Bir PIN
+  tüm *kilitli* listeleri pencere boyunca açar; **gizli** listeleri hiçbir zaman
+  açmaz. "Listeleri yeniden kilitle" veya uygulamadan çıkış sıfırlar. Kilitlenirken
+  ya da gizlenirken o listeden çalan kanal durdurulur.
+- **Gizleme:** liste, "Tüm içerikler", arama, favoriler ve son izlenenler (`source`
+  memo'su). Bölümlerin `categoryId`'si boştur; bu yüzden `Details.tsx` bölümü
+  oynatırken dizinin kategorisini ekler.
 - **Hesabı cihazdan silmek** kilitleri de siler; PIN unutulursa tek sıfırlama yolu budur.
-- **Sınır:** bu, çocuk ve ev içi gizlilik içindir. Filtre arayüzde yapılır; kitaplık
+- **Sınır:** çocuk ve ev içi gizlilik içindir. Filtre arayüzde yapılır; kitaplık
   dosyasına erişebilen biri özeti görebilir (yalnızca özet, PIN değil).
 
 ### 6.7 Çıkış ve kilitleme
@@ -1125,7 +1134,7 @@ testin sınırı bulanıktır. Backend'deki entegrasyon testine benzer.
 | `test:cushion`, `test:cushion:safety` | Büyük tampon beklemesi ve **asla kilitlenmemesi** |
 | `test:rate` | Hız ölçümünün doğruluğu |
 | `test:keychain` | Kayıtlı hesap, Anahtar Zinciri, kilit açma, silme |
-| `test:lock` | Liste kilidi: PIN belirleme, gizleme, yeniden kilitle, hatalı deneme sınırı, kalıcılık |
+| `test:lock` | Liste yönetimi: Ayarlar'dan kilitle/gizle, PIN, her yerde gizleme, göstermek için PIN, yeniden kilitle, hatalı deneme sınırı, kalıcılık |
 | `test:posters` | Afiş/logo: görünüm, eksik görselde baş harfler, kapatma, adresin sayfada ve kitaplıkta olmaması, favori afişinin kalıcılığı |
 | `test:integration` | Electron'suz: Xtream + vekil + büyük katalog |
 | `test:packaged`, `test:4k:packaged` | Aynı testler, ama `release/` içindeki gerçek `.app` ile (`KIYI_TEST_PACKAGED=1`) |

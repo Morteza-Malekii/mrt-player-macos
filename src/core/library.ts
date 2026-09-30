@@ -14,15 +14,18 @@ function cleanLocks(input: unknown): Locks {
   const categories = pin && Array.isArray(l.categories) ? Array.from(new Set(l.categories.filter((k): k is string => typeof k === 'string' && /^(live|vod|series):\d{1,20}$/.test(k)))).slice(0, 500) : [];
   return pin ? { pin, categories } : { categories };
 }
+const categoryKeys = (input: unknown): string[] => Array.isArray(input) ? Array.from(new Set(input.filter((k): k is string => typeof k === 'string' && /^(live|vod|series):\d{1,20}$/.test(k)))).slice(0, 2000) : [];
 export function normalizeLibrary(input: unknown): Library {
   const v = object(input), p = object(v.preferences);
+  const hidden = categoryKeys(v.hidden), locks = cleanLocks(v.locks);
   const favorites = (Array.isArray(v.favorites) ? v.favorites : []).map(cleanItem).filter((x): x is Item => !!x).slice(0, 2000);
   const seen = new Set<string>();
   return {
     favorites: favorites.filter(x => { const key = itemKey(x); if (seen.has(key)) return false; seen.add(key); return true; }),
     recent: (Array.isArray(v.recent) ? v.recent : []).map(row => ({ item: cleanItem(object(row).item), at: Number(object(row).at) || 0, position: Math.max(0, Number(object(row).position) || 0) })).filter(row => row.item).slice(0, 50) as Library['recent'],
     preferences: { volume: typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : DEFAULT_LIBRARY.preferences.volume, muted: p.muted === true, resume: p.resume !== false, posters: p.posters === true },
-    locks: cleanLocks(v.locks)
+    locks: { ...locks, categories: locks.categories.filter(key => !hidden.includes(key)) },
+    hidden
   };
 }
 export function toggleFavorite(library: Library, item: Item): Library {

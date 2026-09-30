@@ -44,16 +44,20 @@ rehberinden alınır. Sağdaki oynatıcı tam ekrana geçebilir; VOD içinde sar
 ses ve duraklatma vardır. Alanlar arasında Tab, seçim için Enter; `Esc` geri,
 `F` tam ekran, `M` sessiz, boşluk oynat/duraklat kullanılır.
 
-Herhangi bir kategoriyi (örneğin yetişkin kanalları) kilitlemek için kategori
-adının yanındaki kilit simgesine tıklayın. İlk kilitte 4–8 haneli bir PIN belirlenir.
-Kilitli liste; kategori, **Tüm içerikler**, arama, favoriler ve son izlenenlerde
-PIN girilene kadar gizlenir. PIN tüm kilitli listeleri açar; soldaki **Listeleri
-yeniden kilitle** veya uygulamadan çıkış tekrar gizler. Ayarlar → Liste kilidi
-altında PIN değiştirilir, tüm kilitler kaldırılır. PIN unutulursa hesabı cihazdan
-silmek tek sıfırlama yoludur. Bu özellik çocuk ve ev içi gizlilik içindir.
+Listeler Ayarlar → **Listeleri yönet** bölümünden yönetilir. Canlı TV, film ve dizi
+kategorilerinin her biri üç durumdan birinde olur: **Görünür**, **Kilitli** veya
+**Gizli**. Gizli liste ve içeriği hiçbir yerde (liste, **Tüm içerikler**, arama,
+favoriler, son izlenenler) gösterilmez. Kilitli liste adıyla görünür ama içeriği
+PIN girilene kadar gizlidir; ilk kilitte 4–8 haneli bir PIN belirlenir. PIN tüm
+kilitli listeleri açar; soldaki **Listeleri yeniden kilitle** veya uygulamadan çıkış
+tekrar gizler. PIN belirlendikten sonra kilitli ya da gizli bir listeyi tekrar
+**Görünür** yapmak da PIN ister; kilitlemek ve gizlemek istemez. Ayarlar → Liste
+kilidi altında PIN değiştirilir, tüm kilitler kaldırılır. PIN unutulursa hesabı
+cihazdan silmek tek sıfırlama yoludur. Bu özellik çocuk ve ev içi gizlilik içindir.
 
-Ayarlar → **Kanal ve film afişlerini göster** açılırsa kanal ve film listelerinde
-sağlayıcının verdiği logo veya afiş adın yanında görünür; görsel yoksa veya yüklenemezse kanalın baş harfleri gösterilir. Görseller
+Kanallar, filmler ve diziler kutucuk (kart) ızgarasında gösterilir: ad kartın alt
+kenarındadır, filmlerde puan köşede görünür. Ayarlar → **Kanal ve film afişlerini
+göster** açılırsa kartlar sağlayıcının verdiği logo veya afişle dolar; görsel yoksa veya yüklenemezse kanalın baş harfleri gösterilir. Görseller
 sayfaya değil ana sürece indirilir ve sayfa yalnızca opak `kiyi://image/...` adresini
 görür.
 

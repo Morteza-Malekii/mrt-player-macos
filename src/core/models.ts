@@ -15,7 +15,10 @@ export interface Recent { item: Item; at: number; position: number }
 // holds `kind:categoryId` keys, because category ids repeat across live, film and series.
 export interface PinRecord { salt: string; hash: string }
 export interface Locks { pin?: PinRecord; categories: string[] }
-export interface Library { favorites: Item[]; recent: Recent[]; preferences: Preferences; locks: Locks }
+// `hidden` lists categories (as `kind:categoryId`) that are not shown anywhere. Hidden and locked
+// never overlap: a category is shown, locked behind the PIN, or hidden.
+export interface Library { favorites: Item[]; recent: Recent[]; preferences: Preferences; locks: Locks; hidden: string[] }
+export type Visibility = 'shown' | 'locked' | 'hidden';
 export interface Status { saved: boolean; requiresPassphrase: boolean; platform: 'mac' | 'tv' | 'preview' }
 // Cumulative counters from the media path, so the stream panel can show whether the provider
 // is keeping up. Platforms without a media gateway report null and the rows stay hidden.
@@ -24,5 +27,5 @@ export interface Reply<T = unknown> { ok: boolean; data?: T; error?: { code: str
 export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats';
 export interface Bridge { call<T>(action: Action, payload?: unknown): Promise<T> }
 export interface Platform extends Bridge { type: 'mac' | 'tv' | 'preview'; attach(video: HTMLVideoElement, playback: Playback, onError: (message: string) => void): () => void; exit(): void }
-export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true, posters: false }, locks: { categories: [] } };
+export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true, posters: false }, locks: { categories: [] }, hidden: [] };
 export const itemKey = (item: Item) => `${item.kind}:${item.isEpisode ? 'episode:' : ''}${item.id}`;

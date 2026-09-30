@@ -48,8 +48,8 @@ try {
       const first = page.getByRole('button', { name: 'Sentetik test yayını', exact: true }), second = page.getByRole('button', { name: 'İstanbul test deseni', exact: true });
       await expect(ready(page)).toHaveCount(1);
       await expect(first.locator('img.poster-image.ready')).toHaveCount(1);
-      await expect(first.locator('.channel-monogram')).not.toContainText('SE');
-      await expect(second.locator('.channel-monogram')).toHaveText('İS');
+      await expect(first.locator('.tile-initials')).toHaveCount(0);
+      await expect(second.locator('.tile-initials')).toHaveText('İS');
       await expect(second.locator('img.poster-image')).toHaveCount(0);
       expect(await size(page)).toEqual([64, 96]);
       // The page only ever asks the app for pictures; the provider's address is not in it.
@@ -67,15 +67,14 @@ try {
       await page.getByRole('button', { name: 'Filmler', exact: true }).click();
       await expect(ready(page)).toHaveCount(1);
       expect(await size(page)).toEqual([64, 96]);
-      await expect(page.locator('.poster > span')).toBeHidden();
-      // The picture stays inside its frame, so the name under it is not covered.
-      const fits = await page.locator('.poster-grid .content-card').first().evaluate(card => {
-        const frame = card.querySelector('.poster')!.getBoundingClientRect(), picture = card.querySelector('img.poster-image')!.getBoundingClientRect(), name = card.querySelector('.item-copy strong')!.getBoundingClientRect();
-        const top = document.elementFromPoint(name.left + 4, name.top + name.height / 2);
-        return { inside: picture.top >= frame.top - 1 && picture.bottom <= frame.bottom + 1, nameUncovered: !!top && !!top.closest('.item-copy') };
+      // The picture stays inside its card, and the name sits on top of it rather than under it.
+      await expect(page.locator('.tile-name')).toHaveText('Test filmi');
+      const fits = await page.locator('.tile-poster').first().evaluate(card => {
+        const frame = card.getBoundingClientRect(), picture = card.querySelector('img.poster-image')!.getBoundingClientRect(), name = card.querySelector('.tile-name')!.getBoundingClientRect();
+        const top = document.elementFromPoint(name.left + name.width / 2, name.top + name.height - 8);
+        return { inside: picture.top >= frame.top - 1 && picture.bottom <= frame.bottom + 1 && picture.left >= frame.left - 1 && picture.right <= frame.right + 1, nameOnTop: !!top && !!top.closest('.tile-name, .content-select') };
       });
-      expect(fits).toEqual({ inside: true, nameUncovered: true });
-      await expect(page.locator('.item-copy strong')).toHaveText('Test filmi');
+      expect(fits).toEqual({ inside: true, nameOnTop: true });
       await page.getByRole('button', { name: 'Test filmi favorilere ekle' }).click();
       await page.getByRole('button', { name: 'Diziler', exact: true }).click();
       await expect(ready(page)).toHaveCount(1);
@@ -86,9 +85,10 @@ try {
       await page.getByRole('button', { name: 'Canlı TV', exact: true }).click();
       await expect(first).toBeVisible();
       await expect(page.locator('img.poster-image')).toHaveCount(0);
-      await expect(first.locator('.channel-monogram')).toHaveText('SE');
+      await expect(first.locator('.tile-initials')).toHaveText('SE');
       await page.getByRole('button', { name: 'Filmler', exact: true }).click();
-      await expect(page.locator('.poster > span')).toBeVisible();
+      await expect(page.locator('.tile-name')).toHaveText('Test filmi');
+      await expect(page.locator('.tile-art svg')).toHaveCount(1); // the film icon stands in for the poster
       await expect(page.locator('img.poster-image')).toHaveCount(0);
       await page.getByRole('button', { name: 'Ayarlar', exact: true }).click();
       await page.getByLabel('Kanal ve film afişlerini göster').check();

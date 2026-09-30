@@ -6,7 +6,7 @@ import { decodeText, normalizeEpg } from '../src/core/epg';
 import { imageUrl, normalizeCredentials, Xtream } from '../src/core/xtream';
 import { matches, normalizeLibrary, remember, toggleFavorite } from '../src/core/library';
 import { publicError } from '../src/core/errors';
-import { checkPin, isLockedItem, lockKey, makePin, validPin } from '../src/core/lock';
+import { categoryState, checkPin, isLockedItem, lockKey, makePin, validPin, withCategoryState } from '../src/core/lock';
 import { request } from '../src/runtime/http';
 import { MediaGateway, lanesFor } from '../src/platform/mac/media';
 import { ImageGateway } from '../src/platform/mac/images';
@@ -169,6 +169,28 @@ test('oturum: afiş kapalıyken hiçbir şey sunulmaz ve diske yazılmaz; açıl
     await second.call('logout');
     assert.equal(second.posterUrl('live', '1'), undefined, 'cleared with the session');
   } finally { api.closeAllConnections(); api.close(); }
+});
+test('liste durumu: görünür, kilitli veya gizli; aynı anda ikisi olmaz, gizli kilide baskındır, geçersiz anahtar atılır', async () => {
+  const pin = await makePin('7302');
+  let library = normalizeLibrary({ locks: { pin }, hidden: ['live:1', 'live:1', 'vod:2', 'nope:3', 'series:x', 5] });
+  assert.deepEqual(library.hidden, ['live:1', 'vod:2']);
+  // A category named in both lists is hidden, never both.
+  const both = normalizeLibrary({ locks: { pin, categories: ['live:1', 'live:9'] }, hidden: ['live:1'] });
+  assert.deepEqual(both.locks.categories, ['live:9']); assert.deepEqual(both.hidden, ['live:1']);
+  assert.deepEqual(['1', '9', '4'].map(id => categoryState(both, 'live', id)), ['hidden', 'locked', 'shown']);
+  assert.equal(categoryState(both, 'vod', '1'), 'shown', 'kinds are separate lists');
+  // Moving through all three states leaves exactly one of them set each time, and keeps the PIN.
+  library = normalizeLibrary({});
+  library = withCategoryState(library, 'live', '5', 'locked', pin);
+  assert.deepEqual([library.locks.categories, library.hidden, library.locks.pin], [['live:5'], [], pin]);
+  library = withCategoryState(library, 'live', '5', 'hidden');
+  assert.deepEqual([library.locks.categories, library.hidden, library.locks.pin], [[], ['live:5'], pin]);
+  library = withCategoryState(library, 'live', '5', 'shown');
+  assert.deepEqual([library.locks.categories, library.hidden], [[], []]);
+  assert.equal(normalizeLibrary(library).locks.pin?.hash, pin.hash);
+  // Favourites and history survive being saved beside hidden categories.
+  const item = { id: '1', kind: 'live' as const, name: 'A', categoryId: '5' };
+  assert.deepEqual(toggleFavorite(normalizeLibrary({ hidden: ['live:5'] }), item).hidden, ['live:5']);
 });
 test('API doğrulama ve ID enjeksiyonu engeli', async () => {
   const client = new Xtream({ server: 'https://example.invalid', username: 'test', password: randomBytes(12).toString('hex') }, { json: async () => ({ user_info: { auth: 0 } }) });
