@@ -1,4 +1,5 @@
-import { DEFAULT_LIBRARY, type Item, type Library, type Locks, type PinRecord, itemKey } from './models';
+import { DEFAULT_LIBRARY, type Item, type Library, type Locks, type Order, type PinRecord, itemKey } from './models';
+import { MAX_SAVED_CATEGORIES, MAX_SAVED_ITEMS } from './order';
 import { object, text } from './errors';
 export function cleanItem(input: unknown): Item | null {
   const v = object(input);
@@ -15,6 +16,13 @@ function cleanLocks(input: unknown): Locks {
   return pin ? { pin, categories } : { categories };
 }
 const categoryKeys = (input: unknown): string[] => Array.isArray(input) ? Array.from(new Set(input.filter((k): k is string => typeof k === 'string' && /^(live|vod|series):\d{1,20}$/.test(k)))).slice(0, 2000) : [];
+const idList = (input: unknown, max: number): string[] => Array.isArray(input) ? Array.from(new Set(input.filter((x): x is string => typeof x === 'string' && /^\d{1,20}$/.test(x)))).slice(0, max) : [];
+function cleanOrder(input: unknown): Order {
+  const o = object(input), categories: Order['categories'] = {}, items: Order['items'] = {};
+  for (const kind of ['live', 'vod', 'series'] as const) { const ids = idList(object(o.categories)[kind], MAX_SAVED_CATEGORIES); if (ids.length) categories[kind] = ids; }
+  for (const [key, list] of Object.entries(object(o.items)).filter(([key]) => /^(live|vod|series):\d{1,20}$/.test(key)).slice(0, 300)) { const ids = idList(list, MAX_SAVED_ITEMS); if (ids.length) items[key] = ids; }
+  return { categories, items };
+}
 export function normalizeLibrary(input: unknown): Library {
   const v = object(input), p = object(v.preferences);
   const hidden = categoryKeys(v.hidden), locks = cleanLocks(v.locks);
@@ -23,9 +31,10 @@ export function normalizeLibrary(input: unknown): Library {
   return {
     favorites: favorites.filter(x => { const key = itemKey(x); if (seen.has(key)) return false; seen.add(key); return true; }),
     recent: (Array.isArray(v.recent) ? v.recent : []).map(row => ({ item: cleanItem(object(row).item), at: Number(object(row).at) || 0, position: Math.max(0, Number(object(row).position) || 0) })).filter(row => row.item).slice(0, 50) as Library['recent'],
-    preferences: { volume: typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : DEFAULT_LIBRARY.preferences.volume, muted: p.muted === true, resume: p.resume !== false, posters: p.posters === true },
+    preferences: { volume: typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : DEFAULT_LIBRARY.preferences.volume, muted: p.muted === true, resume: p.resume !== false, posters: p.posters === true, ...(typeof p.audio === 'string' && /^[a-z]{2,3}$/.test(p.audio) ? { audio: p.audio } : {}) },
     locks: { ...locks, categories: locks.categories.filter(key => !hidden.includes(key)) },
-    hidden
+    hidden,
+    order: cleanOrder(v.order)
   };
 }
 export function toggleFavorite(library: Library, item: Item): Library {

@@ -53,8 +53,9 @@ app.whenReady().then(async () => {
   });
   const create = () => {
     // A player keeps decoding while it sits behind another window or on a second display, so
-    // the renderer must not be throttled the way a background page would be.
-    window = new BrowserWindow({ width: 1360, height: 900, minWidth: 960, minHeight: 650, backgroundColor: '#0c111b', title: 'MRT-Player', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, spellcheck: false, backgroundThrottling: false } });
+    // the renderer must not be throttled the way a background page would be. AudioVideoTracks is
+    // what lets the page list and switch the dubs inside a film; Chromium keeps it off by default.
+    window = new BrowserWindow({ width: 1360, height: 900, minWidth: 960, minHeight: 650, backgroundColor: '#0c111b', title: 'MRT-Player', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, spellcheck: false, backgroundThrottling: false, enableBlinkFeatures: 'AudioVideoTracks' } });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', e => e.preventDefault());
     window.on('closed', () => { window = null; void runtime.call('logout'); });

@@ -6,6 +6,8 @@ import { decodeText, normalizeEpg } from '../src/core/epg';
 import { imageUrl, normalizeCredentials, Xtream } from '../src/core/xtream';
 import { matches, normalizeLibrary, remember, toggleFavorite } from '../src/core/library';
 import { publicError } from '../src/core/errors';
+import { applyOrder, moveInList, moveSaved, type Move } from '../src/core/order';
+import { decodeSubtitles, languageKey, languageName, parseSubtitles, preferredTrack, trackNames } from '../src/core/tracks';
 import { categoryState, checkPin, isLockedItem, lockKey, makePin, validPin, withCategoryState } from '../src/core/lock';
 import { request } from '../src/runtime/http';
 import { MediaGateway, lanesFor } from '../src/platform/mac/media';
@@ -192,6 +194,51 @@ test('liste durumu: görünür, kilitli veya gizli; aynı anda ikisi olmaz, gizl
   const item = { id: '1', kind: 'live' as const, name: 'A', categoryId: '5' };
   assert.deepEqual(toggleFavorite(normalizeLibrary({ hidden: ['live:5'] }), item).hidden, ['live:5']);
 });
+test('sıralama: kısmi kayıt sağlayıcı sırasıyla birleşir, bilinmeyenler atılır, yeni gelenler sona eklenir', () => {
+  const rows = ['1', '2', '3', '4', '5'];
+  assert.deepEqual(applyOrder(rows, id => id, undefined), rows);
+  assert.deepEqual(applyOrder(rows, id => id, []), rows);
+  assert.deepEqual(applyOrder(rows, id => id, ['4', '2']), ['4', '2', '1', '3', '5']);
+  assert.deepEqual(applyOrder(rows, id => id, ['9', '4', '8', '2']), ['4', '2', '1', '3', '5'], 'ids the provider no longer lists are ignored');
+  assert.deepEqual(applyOrder([...rows, '6'], id => id, ['4', '2']), ['4', '2', '1', '3', '5', '6'], 'a newly listed row follows the arranged ones');
+});
+test('sıralama: rastgele taşımalar düz bir dizideki taşımayla birebir aynı sonucu verir ve kayıt kısa kalır', () => {
+  let seed = 12345; const random = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  let rows = Array.from({ length: 40 }, (_, i) => String(i + 1)), reference = rows.slice(), saved: string[] | undefined;
+  const moves: Move[] = ['up', 'down', 'top'];
+  for (let step = 0; step < 600; step++) {
+    if (step === 300) { rows = rows.filter(id => id !== '7'); reference = reference.filter(id => id !== '7'); } // the provider drops one
+    const current = applyOrder(rows, id => id, saved);
+    assert.deepEqual(current, reference, `before step ${step}`);
+    const id = reference[random(reference.length)], move = moves[random(3)], at = reference.indexOf(id);
+    if (move === 'top') reference.splice(0, 0, ...reference.splice(at, 1));
+    else { const to = move === 'up' ? at - 1 : at + 1; if (to >= 0 && to < reference.length) [reference[at], reference[to]] = [reference[to], reference[at]]; }
+    saved = moveSaved(saved, current, id, move);
+    assert.deepEqual(applyOrder(rows, id => id, saved), reference, `after ${move} of ${id} at step ${step}`);
+  }
+  // A move that cannot happen changes nothing, and a top move is cheap however far down the item was.
+  const long = Array.from({ length: 5000 }, (_, i) => String(i + 1));
+  assert.deepEqual(moveSaved(undefined, long, '1', 'up'), []); assert.deepEqual(moveSaved(undefined, long, '5000', 'down'), []);
+  assert.deepEqual(moveSaved(undefined, long, '4321', 'top'), ['4321']);
+  assert.equal(moveSaved(undefined, long, '999', 'up').length <= 999, true);
+  assert.equal(moveSaved(['1', '2', '3', '4'], long, '3', 'top', 3).length <= 3, true);
+});
+test('sıralama: görünmeyen öğeler arasındaki favori taşıması görünen komşuyla yer değiştirir', () => {
+  const list = ['a', 'h1', 'b', 'h2', 'c'], visible = (id: string) => !id.startsWith('h');
+  const move = (id: string, m: Move) => moveInList(list, x => x, visible, id, m);
+  assert.deepEqual(move('b', 'up'), ['b', 'h1', 'a', 'h2', 'c']);
+  assert.deepEqual(move('b', 'down'), ['a', 'h1', 'c', 'h2', 'b']);
+  assert.deepEqual(move('c', 'top'), ['c', 'a', 'h1', 'b', 'h2']);
+  assert.equal(move('a', 'up'), list); assert.equal(move('c', 'down'), list); assert.equal(move('a', 'top'), list); assert.equal(move('h1', 'up'), list);
+});
+test('sıralama kaydı: geçersiz anahtar ve kimlikler atılır, tekrarlar silinir, favori ve geçmişle birlikte korunur', () => {
+  const order = { categories: { live: ['3', '3', 'x', '1'], vod: [], nope: ['1'] }, items: { 'live:5': ['9', '2', '2', 'a'], 'bad': ['1'], 'series:7': [] } };
+  const library = normalizeLibrary({ order });
+  assert.deepEqual(library.order, { categories: { live: ['3', '1'] }, items: { 'live:5': ['9', '2'] } });
+  assert.deepEqual(normalizeLibrary({}).order, { categories: {}, items: {} });
+  const item = { id: '1', kind: 'live' as const, name: 'A', categoryId: '5' };
+  assert.deepEqual(toggleFavorite(library, item).order, library.order); assert.deepEqual(remember(library, item, 4).order, library.order);
+});
 test('API doğrulama ve ID enjeksiyonu engeli', async () => {
   const client = new Xtream({ server: 'https://example.invalid', username: 'test', password: randomBytes(12).toString('hex') }, { json: async () => ({ user_info: { auth: 0 } }) });
   await assert.rejects(client.authenticate(), /geçersiz/);
@@ -225,4 +272,50 @@ test('kanal değişimi açık yayın bağlantılarını hemen kapatır', async (
     gateway.clear();
     await released;
   } finally { origin.close(); }
+});
+test('dil anahtarı: üç harfli, iki harfli ve bölgeli kodlar aynı dile iner, bilinmeyen boş kalır', () => {
+  for (const code of ['tur', 'tr', 'TR', 'tr-TR', 'tr_TR']) assert.equal(languageKey(code), 'tr');
+  for (const code of ['fas', 'per', 'fa']) assert.equal(languageKey(code), 'fa');
+  assert.equal(languageKey('ger'), 'de'); assert.equal(languageKey('eng'), 'en');
+  for (const code of ['und', '', undefined, 'x', 'not a language', '12', '../..']) assert.equal(languageKey(code), '');
+  assert.equal(languageName('tr'), 'Türkçe'); assert.equal(languageName('fa'), 'Farsça'); assert.equal(languageName('en'), 'İngilizce');
+});
+test('ses parçası adları: dil, bilinmeyende sıra numarası, aynı dilde numara', () => {
+  assert.deepEqual(trackNames(['eng', 'tur']), ['İngilizce', 'Türkçe']);
+  assert.deepEqual(trackNames(['und', undefined, 'tur']), ['Parça 1', 'Parça 2', 'Türkçe']);
+  assert.deepEqual(trackNames(['tur', 'eng', 'tur']), ['Türkçe 1', 'İngilizce', 'Türkçe 2']);
+  assert.deepEqual(trackNames([]), []);
+});
+test('tercih edilen ses: kayıtlı dilin ilk parçası, yoksa dosyanın kendi varsayılanı', () => {
+  assert.equal(preferredTrack(['eng', 'tur', 'per'], 'tr'), 1);
+  assert.equal(preferredTrack(['eng', 'tur', 'per'], 'fa'), 2);
+  assert.equal(preferredTrack(['eng', 'tur'], 'de'), -1);
+  assert.equal(preferredTrack(['eng', 'tur'], undefined), -1);
+  assert.equal(preferredTrack([], 'tr'), -1);
+});
+test('kitaplık son seçilen ses dilini yalnızca geçerli iki-üç harfli anahtar olarak saklar', () => {
+  assert.equal(normalizeLibrary({ preferences: { audio: 'tr' } }).preferences.audio, 'tr');
+  assert.equal(normalizeLibrary({ preferences: { audio: 'fas' } }).preferences.audio, 'fas');
+  for (const value of ['TR', 'turkish', 't', 1, null, '', 'tr-TR', '../x']) assert.equal('audio' in normalizeLibrary({ preferences: { audio: value } }).preferences, false);
+  assert.equal('audio' in normalizeLibrary({}).preferences, false);
+});
+test('altyazı çözümü: UTF-8, BOM, UTF-16, Türkçe windows-1254 ve Farsça windows-1256', () => {
+  const turkish = 'Çok güzel bir gün, öğrenci şimdi geldi.';
+  assert.match(decodeSubtitles(new TextEncoder().encode(`1\n00:00:01,000 --> 00:00:03,000\n${turkish}\n`)), /Çok güzel bir gün/);
+  assert.equal(decodeSubtitles(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('merhaba')])), 'merhaba');
+  assert.equal(decodeSubtitles(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('şimdi', 'utf16le')])), 'şimdi');
+  // The same two files as old tools write them (made with iconv): the code page is guessed from the bytes.
+  const tr1254 = Buffer.from('310a30303a30303a30312c303030202d2d3e2030303a30303a30332c3030300ac76f6b2067fc7a656c206269722067fc6e2c20f6f072656e636920fe696d64692067656c64692e0a', 'hex');
+  assert.equal(parseSubtitles(decodeSubtitles(tr1254))[0].text, turkish);
+  const fa1256 = Buffer.from('310a30303a30303a30312c303030202d2d3e2030303a30303a30332c3030300ad3e1c7e320cfe4edc7a120cdc7e120d4e3c7208dd8e6d120c7d3cabf20908d818e0a', 'hex');
+  assert.equal(parseSubtitles(decodeSubtitles(fa1256))[0].text, 'سلام دن\u064Aا، حال شما چطور است؟ گچپژ');
+});
+test('altyazı ayrıştırma: SRT ve WebVTT, yerleşim etiketleri, bozuk bloklar', () => {
+  const srt = '\uFEFF1\r\n00:00:01,500 --> 00:00:03,000\r\n{\\an8}Merhaba\r\n<i>dünya</i>\r\n\r\n2\r\n01:02:03,4 --> 01:02:05,000\r\nİkinci\r\n\r\n3\r\n00:00:09,000 --> 00:00:08,000\r\nters\r\n\r\n4\r\nsaat yok\r\n\r\n5\r\n00:00:10,000 --> 00:00:11,000\r\n';
+  assert.deepEqual(parseSubtitles(srt), [{ start: 1.5, end: 3, text: 'Merhaba\n<i>dünya</i>' }, { start: 3723.4, end: 3725, text: 'İkinci' }]);
+  const vtt = 'WEBVTT\n\nNOTE bir not\n--> değil\n\nintro\n00:01.000 --> 00:02.250 align:start position:10%\nSelam\n\n00:00:03.000 --> 00:00:04.000\nİki satır\nburada';
+  assert.deepEqual(parseSubtitles(vtt), [{ start: 1, end: 2.25, text: 'Selam' }, { start: 3, end: 4, text: 'İki satır\nburada' }]);
+  assert.deepEqual(parseSubtitles(''), []); assert.deepEqual(parseSubtitles('rastgele metin'), []);
+  const many = Array.from({ length: 30 }, (_, i) => `${i + 1}\n00:00:${String(i).padStart(2, '0')},000 --> 00:00:${String(i).padStart(2, '0')},500\nx`).join('\n\n');
+  assert.equal(parseSubtitles(many, 10).length, 10);
 });

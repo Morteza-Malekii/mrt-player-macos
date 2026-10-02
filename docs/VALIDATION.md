@@ -379,6 +379,107 @@
   yanıtında sayı yok; saymak tüm kataloğu indirmek demek olurdu). Eski favori/geçmiş
   bölümlerinin kategorisi boş kayıtlı olduğundan gizlenemez.
 
+## Kendi sıralamanız (sürüm numarası artırılmadı)
+
+- Listelerin sırası Ayarlar → Listeleri yönet'te (başa al, yukarı, aşağı), bir listedeki
+  kanal/film/dizilerin sırası liste başlığındaki "Sırala" modunda, favoriler de aynı
+  modda değiştirilebiliyor. Sıralama modunda kart oynatmıyor; arama yazılınca mod kapanıyor.
+  İlk açılan liste, kullanıcı sırasındaki ilk gizli olmayan liste. "Sırayı sıfırla" hem
+  liste başlığında hem Ayarlar'da var.
+- Kayıt kısmi: yalnızca kullanıcının düzenlediği ön kısım saklanıyor, gerisi sağlayıcı
+  sırasında arkadan ekleniyor. Bu sayede 50 bin kanallık bir listede "başa al" tek kimlik
+  yazıyor.
+- Birim testleri: `applyOrder` temel durumları (bilinmeyen kimlik, yeni gelen satır);
+  600 rastgele taşımanın (başa al, yukarı, aşağı; 300. adımda sağlayıcının bir kanalı
+  düşürmesiyle) düz bir dizideki taşımayla birebir aynı görünen sırayı vermesi; 5000
+  kanallık listede `top`'un tek kimlik yazması; gizli öğeler arasındaki favori taşıması;
+  geçersiz/tekrarlı kayıtların `normalizeLibrary` ile temizlenmesi.
+- `npm run test:order` gerçek Electron penceresinde: kartlar sıralama modunda oynatmıyor, uçtaki
+  düğmeler devre dışı, başa al / öne / geriye doğru sırayı veriyor, arama sırasında düğmeler
+  yok, Ayarlar'da liste taşıma (uçlarda devre dışı, arama sırasında oklar yok) kategori
+  panelini ve ilk açılan listeyi değiştiriyor, favoriler sıralanıyor, hepsi yeniden
+  başlatmada kalıyor ve sıfırlama sağlayıcı sırasını geri getiriyor. Kategori panelinin sırayı
+  yok sayması bozulunca test başarısız oluyor. Test yazılırken iki hata yakalandı: kartın ortasına
+  basmak sıralama düğmesine denk geliyordu (test düzeltildi) ve arama sırasında gizlenen
+  sıralama modu arama silinince sessizce geri geliyordu (artık arama yazılınca mod kapanıyor).
+- Bilinen sınırlar: "Tüm içerikler" ve "Son izlenenler" sıralanamıyor (ilki çok büyük, ikincisi
+  zamana göre); sürükle-bırak yok, düğmeler var; kayıt ön kısımla sınırlı (liste başına en çok
+  1000, kategori başına tür için en çok 2000 kimlik).
+
+## Ses ve altyazı (sürüm numarası artırılmadı)
+
+- Film ve dizi bölümlerinde oynatıcıya **Ses ve altyazı** menüsü eklendi: dosyadaki
+  dublaj parçalarının listesi ve seçimi, ayrıca kullanıcının kendi `.srt`/`.vtt`
+  altyazı dosyasını yüklemesi. Canlı yayında düğme yok. Ayarlar sayfasına seçenek
+  eklenmedi; son seçilen ses dili kendiliğinden hatırlanıyor (yukarıdaki "varsayılan
+  hesaptan veya veriden türetilsin" ilkesine uygun).
+- Tasarım yazılmadan önce Chromium'un ne verdiği gerçek Electron penceresinde ölçüldü
+  (ffmpeg ile üretilmiş, İngilizce ve Türkçe işaretli iki sesli `.mp4` ve `.mkv`):
+  - `video.audioTracks` **varsayılan olarak yok**; `enableBlinkFeatures:
+    'AudioVideoTracks'` ile geliyor ve iki kapta da dil kodlarıyla (`eng`, `tur`) listeleniyor.
+  - Dosyaya gömülü altyazı (`mov_text` ve `srt`) iki kapta da `video.textTracks`'e
+    **hiç düşmüyor**. Bu yüzden gömülü altyazı gösterilemiyor; yalnızca kullanıcının
+    yüklediği dosya gösteriliyor. Sunucu tarafında ayıklamak (ffmpeg paketlemek) ve
+    mkv'de altyazı bloklarının dosyanın her yerine dağılmış olması yüzünden tüm dosyayı
+    indirmek gerektiği için denenmedi.
+  - **Parça geçişi gerçekten sesi değiştiriyor.** Birinci parça 440 Hz, ikincisi 880 Hz
+    sinüs; Web Audio çözümleyicisinde tepe 439 Hz → geçişten sonra 879 Hz → geri
+    dönünce 439 Hz okundu, `.mp4` ve `.mkv` için aynı. Bu ölçüm uygulamanın dışında, yerel
+    ve aynı kökenli bir sayfada yapıldı; uygulamanın içindeki e2e testi hangi parçanın
+    çaldığını frekansla **doğrulamaz**, yalnızca `enabled` bayraklarının döndüğüne,
+    çözülen ses baytının artmaya devam ettiğine ve görüntünün ilerlediğine bakar.
+  - **AC-3 ikinci sesi Chromium listeden çıkarıyor:** birinci parça AAC, ikincisi AC-3
+    olan `.mp4` ve `.mkv`'de `audioTracks` yalnızca AAC parçasını veriyor. Sonuç:
+    sessiz bir parça seçilemiyor (0.1.7'deki AC-3 sessizliğine düşülmüyor), ama o
+    dublaj da hiç görünmüyor. Menüde bu açıkça yazıyor. Gerçek sağlayıcının
+    dublajlarının hangi codec'te olduğu buradan bilinemez.
+- Altyazı dosyası: UTF-8, UTF-16 (BOM'lu), Türkçe windows-1254 ve Farsça windows-1256
+  okunuyor (son ikisi `iconv` ile üretilmiş gerçek bayt dizileriyle birim testinde);
+  kod sayfası yüksek bayt oranından tahmin ediliyor (%15 üstü Farsça). SRT ve
+  WebVTT: BOM, CRLF, `{\an8}` biçem etiketleri, WebVTT başlığı/`NOTE` blokları ve hücre
+  ayarları, saatsiz zaman damgaları, ters/boş zaman aralıkları ayrıştırmada elenir.
+  Üst sınırlar: 2 MB dosya, 20.000 altyazı satırı. Dosya içeriği `VTTCue` olarak
+  eklenir (HTML değil), sayfada betik çalıştırmaz.
+- Altyazı konumu: pencerede kontrol çubuğu her zaman göründüğü için yazı görüntünün
+  alttan ~%26'sında, tam ekranda ~%10'unda duruyor (`snapToLines = false`, `lineAlign =
+  'end'`). Önceki denemede varsayılan konum kontrol çubuğuyla çakışıyordu; ekran
+  görüntüsüyle yakalandı ve düzeltildi. Farsça satır sağdan sola doğru çiziliyor.
+- Kaydedilen tek şey `preferences.audio` (iki-üç harfli dil anahtarı, `tr`/`fa`/...).
+  Parça numarası ve altyazı dosyası saklanmıyor (test: kitaplıkta dosya adı yok);
+  `normalizeLibrary` biçime uymayan değeri atıyor (birim testi).
+- Birim testleri (`tests/core.test.ts`): dil anahtarı (`tur`/`per`/`tr-TR`...), parça adları
+  ve aynı dilde numaralandırma, `preferredTrack`, altyazı kod çözme ve ayrıştırma,
+  kitaplık normalizasyonu. `npm run test:tracks` gerçek Electron penceresinde: iki
+  dublaj listeleniyor ve ilki seçili; Türkçeye geçince çözülen ses baytı artıyor,
+  görüntü ilerliyor, hata çıkmıyor; menü oynatıcının içinde kalıyor; Türkçe, Farsça ve
+  windows-1254 altyazı doğru metinle ve doğru anda çıkıyor; Kapalı/açık; yeni dosya eskisinin
+  yerine geçiyor; altyazı içermeyen dosya reddediliyor ve eskisini bozmuyor; Esc önce
+  menüyü, sonra oynatıcıyı kapatıyor; yeni pencerede film ve dizi bölümü Türkçe sesle
+  kendiliğinden başlıyor ve İngilizceye dönülünce sonraki bölüm onu izliyor; canlı
+  yayında düğme yok. `AudioVideoTracks` kapatılınca test tam bu adımda başarısız oluyor
+  (İngilizce/Türkçe seçenekleri listede yok).
+- Test yazılırken yakalananlar: menü küçük oynatıcıda tek sütunken "Altyazı dosyası
+  yükle" düğmesi kaydırma alanının altında kalıyordu (iki sütuna çevrildi); testin kendisi
+  menüyü açıkken tekrar açmaya çalışıp kapatıyordu (test düzeltildi).
+- Bilinen sınırlar: (1) AC-3, E-AC-3 ve DTS dublajlar listelenmez. (2) Gömülü altyazı
+  gösterilemez; sağlayıcı altyazıyı ayrı bir adres olarak verse bile Xtream API'sinde
+  bunun için standart bir alan olmadığından bu sürümde okunmuyor; gerçek bir
+  sağlayıcıdan `get_vod_info`/`get_series_info` yanıtı görülürse eklenebilir. (3)
+  Altyazı zamanlama kaydırması (gecikme/öne alma) yok; farklı sürüme ait bir dosya
+  kaymış görünürse düzeltilemez. (4) Yüklenen altyazı sonraki bölüme taşınmaz. (5) HLS
+  biçimli film (`.m3u8`) için `audioTracks`'in dolup dolmadığı denenmedi. (6) Ses
+  geçişinin gerçek bir sağlayıcıda, özellikle tek bağlantılı hesapta nasıl davrandığı
+  denenmedi; yalnızca yerel fixture ile doğrulandı. (7) webOS deposuna
+  dokunulmadı; paylaşılan klasörlerde (`src/core`, `src/ui`) Mac ileride, `shared:check`
+  eskiden olduğu gibi başarısız. TV'de Chromium 53 `audioTracks` ve `VTTCue` sunmayabilir.
+
+- Geçenler (değişiklikten sonra): tip denetimi, 25 birim testi, derleme, `test:tracks`,
+  `test:e2e`, `test:lock`, `test:posters`, `test:order`, `test:switch`, `test:solo`,
+  `test:integration`, `test:4k` (0/126 kare atlandı), `test:cushion`, `test:lanes`,
+  `test:recover`. `test:rate`, `test:keychain`, `test:cushion:safety` ve paketli `.app`
+  testleri yeniden koşulmadı; `release/` altındaki `.app` bu özellik olmadan eski sürümde
+  duruyor, `npm run package` ile yeniden üretilmeli.
+
 ## Dış doğrulama gerektiren sınır
 
 Fiziksel LG TV veya çalışan LG simülatörü verilmedi. Dolayısıyla `.ipk` kurulum,

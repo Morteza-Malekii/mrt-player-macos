@@ -55,11 +55,32 @@ tekrar gizler. PIN belirlendikten sonra kilitli ya da gizli bir listeyi tekrar
 kilidi altında PIN değiştirilir, tüm kilitler kaldırılır. PIN unutulursa hesabı
 cihazdan silmek tek sıfırlama yoludur. Bu özellik çocuk ve ev içi gizlilik içindir.
 
+Sıralamayı siz belirlersiniz. Listelerin sırası Ayarlar → **Listeleri yönet**'te
+oklarla (başa al, yukarı, aşağı) değiştirilir; ilk sıradaki liste Canlı TV, Filmler
+veya Diziler açıldığında ilk görünen olur. Bir listenin içindeki kanalları veya
+filmleri değiştirmek için liste başlığındaki **Sırala** düğmesine basın; kartlar
+oynatmak yerine başa al, öne al ve geriye al düğmelerini gösterir. **Favoriler**
+de aynı şekilde sıralanır. Arama yazarken sıralama kapanır. Sıra yalnızca bu
+cihazda, hesabın kitaplığında saklanır; **Sırayı sıfırla** sağlayıcının sırasına
+döner. Yalnızca sizin düzenlediğiniz kısım saklanır, sağlayıcı yeni kanal eklerse
+bunlar düzenlediğiniz kanalların ardından görünür.
+
 Kanallar, filmler ve diziler kutucuk (kart) ızgarasında gösterilir: ad kartın alt
 kenarındadır, filmlerde puan köşede görünür. Ayarlar → **Kanal ve film afişlerini
 göster** açılırsa kartlar sağlayıcının verdiği logo veya afişle dolar; görsel yoksa veya yüklenemezse kanalın baş harfleri gösterilir. Görseller
 sayfaya değil ana sürece indirilir ve sayfa yalnızca opak `kiyi://image/...` adresini
 görür.
+
+Film ve dizi bölümlerinde oynatıcının sağ altındaki **Ses ve altyazı** düğmesi
+bir menü açar. **Ses** altında dosyadaki dublaj/dil parçaları (Türkçe, İngilizce,
+Farsça...) listelenir; seçtiğiniz dil hatırlanır ve o dilde parçası olan sonraki her
+film ve bölüm onunla başlar. AC-3, E-AC-3 ve DTS sesler macOS'taki Chromium'da
+çözülemediği için listelenmez; bu codec'lerle yayımlanmış bir dublaj görünmez.
+**Altyazı** altında **Altyazı dosyası yükle…** ile bilgisayarınızdan bir `.srt` ya da
+`.vtt` dosyası seçilir (UTF-8, Türkçe windows-1254 ve Farsça windows-1256 dosyalar
+okunur); altyazı görüntünün üstünde çıkar, **Kapalı** ile gizlenir. Dosyanın içine
+gömülü altyazılar gösterilemez, çünkü Chromium bunları sayfaya vermez. Yüklenen
+altyazı yalnızca o oynatma için geçerlidir. Canlı yayında bu düğme yoktur.
 
 Büyük listelerde uygulama önce ilk kategoriyi yükler; tüm kataloğu görmek veya
 genel arama yapmak için **Tüm içerikler**'i seçin. Oynatma ayarı yoktur: canlı
@@ -96,6 +117,8 @@ npm run test:cushion:safety
 npm run test:rate
 npm run test:keychain
 npm run test:lock
+npm run test:order
+npm run test:tracks
 npm run test:posters
 npm run test:packaged
 npm run test:4k:packaged

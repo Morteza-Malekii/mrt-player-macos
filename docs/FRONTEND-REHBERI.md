@@ -480,6 +480,8 @@ macOs/
 | [xtream.ts](../src/core/xtream.ts) | `Xtream` sınıfı: `authenticate`, `categories`, `items`, `epg`, `detail`, `stream`; `normalizeCredentials()` ve `parseKind()` |
 | [epg.ts](../src/core/epg.ts) | Program rehberi verisini temizler; sağlayıcının base64 veya düz metnini çözer (`decodeText`) |
 | [library.ts](../src/core/library.ts) | Favori/geçmiş/tercih/kilit kuralları: `normalizeLibrary`, `toggleFavorite`, `remember`, `cleanItem` |
+| [order.ts](../src/core/order.ts) | Kısmi sıra: `applyOrder`, `moveSaved`, `moveInList` (başa al / yukarı / aşağı) |
+| [tracks.ts](../src/core/tracks.ts) | Ses dili ve altyazı: `languageKey`, `trackNames`, `preferredTrack`, `decodeSubtitles`, `parseSubtitles` |
 | [lock.ts](../src/core/lock.ts) | Liste kilidi: `makePin`/`checkPin` (PBKDF2, WebCrypto), `lockKey`, `isLockedItem`, `validPin` |
 
 Önemli noktalar:
@@ -717,14 +719,15 @@ Kalbe tıklama → update(current => toggleFavorite(current, item))
 katmanlara uygular; ilk uyan çalışır:
 
 0. PIN penceresi açıksa kapat
-1. Tam ekran açıksa kapat
-2. Ayrıntı penceresi açıksa kapat
-3. Çıkış onayı açıksa kapat
-4. Arama kutusu doluysa temizle
-5. Oynatıcı açık veya bağlanıyorsa durdur
-6. Canlı TV dışındaki bir ekrandaysa Canlı TV'ye dön
-7. Kategori seçiliyse "Tüm içerikler"e dön
-8. Yalnızca TV'de: çıkış onayı iste
+1. Oynatıcıdaki "Ses ve altyazı" menüsü açıksa kapat
+2. Tam ekran açıksa kapat
+3. Ayrıntı penceresi açıksa kapat
+4. Çıkış onayı açıksa kapat
+5. Arama kutusu doluysa temizle
+6. Oynatıcı açık veya bağlanıyorsa durdur
+7. Canlı TV dışındaki bir ekrandaysa Canlı TV'ye dön
+8. Kategori seçiliyse "Tüm içerikler"e dön
+9. Yalnızca TV'de: çıkış onayı iste
 
 Bu "geri yığını"dır. Yeni bir katman (yeni modal gibi) eklersen bu zincire de
 eklenmelidir.
@@ -755,6 +758,55 @@ kilit simgesi yoktur.
 - **Hesabı cihazdan silmek** kilitleri de siler; PIN unutulursa tek sıfırlama yolu budur.
 - **Sınır:** çocuk ve ev içi gizlilik içindir. Filtre arayüzde yapılır; kitaplık
   dosyasına erişebilen biri özeti görebilir (yalnızca özet, PIN değil).
+
+### 6.6.2 Kendi sıralamanız
+
+- **Ne saklanır:** `Library.order = { categories: { live?, vod?, series? }, items: { 'tür:kategoriId': [id...] } }`.
+  Sağlayıcı binlerce kanal verebilir; bu yüzden yalnızca **kullanıcının düzenlediği
+  ön kısım** (`saved`) tutulur, gerisi sağlayıcının sırasıyla arkadan eklenir
+  (`applyOrder`). Sağlayıcının artık listelemediği kimlikler yok sayılır, yeni
+  eklenenler düzenlenenlerin ardından görünür.
+- **Taşıma (`moveSaved`):** `top` yalnızca tek kimlik ekler (kaç bin kanal aşağıdan olursa
+  olsun ucuzdur). `up`/`down` iki komşuyu takas eder ve kaydı, dokunulan en uzak yere
+  kadar uzatır. Birim testi 600 rastgele taşımayı düz bir dizideki taşımayla
+  karşılaştırır.
+- **Favoriler** kendi dizisinin sırasıdır (`moveInList`); arada gizli öğe varsa görünen
+  komşuyla yer değiştirir.
+- **Arayüz:** kategori sırası Ayarlar → Listeleri yönet'te (`CategoryManager`), kanal sırası
+  liste başlığındaki "Sırala" modunda (`Tile`'ın `arrange` özelliği; bu modda kart
+  oynatmaz). Arama yazılınca mod kapanır, çünkü filtrelenmiş liste üzerinde taşımak
+  anlamsızdır. Varsayılan ilk liste, kullanıcının sırasındaki ilk **gizli olmayan** listedir.
+
+### 6.6.3 Ses ve altyazı
+
+Oynatıcının sağ altındaki menü (`Player.tsx`) iki şey yapar; ikisi de **tarayıcının
+yapabildiğiyle** sınırlıdır ve bu sınırlar `docs/VALIDATION.md` içinde ölçülmüştür:
+
+- **Dublaj (ses parçası).** Chromium `video.audioTracks` listesini varsayılan olarak
+  vermez; `main.ts` içinde pencereye `enableBlinkFeatures: 'AudioVideoTracks'`
+  verildi. Liste `.mp4` ve `.mkv` için dil kodlarıyla gelir. Parçayı seçmek
+  `track.enabled = true` yazmaktır (diğerleri kapatılır). Chromium'un çözemediği
+  codec'ler (AC-3, E-AC-3, DTS) listede **hiç yoktur**; bu yüzden sessiz bir parça
+  seçmek mümkün değildir ama o dublaj da görünmez. Backend benzetmesi: sürücü
+  desteklemediği için sorgudan hiç dönmeyen satırlar.
+- **Altyazı.** Dosyanın içine gömülü altyazıyı Chromium sayfaya vermez
+  (`video.textTracks` boş kalır). Bu yüzden kullanıcı kendi `.srt`/`.vtt` dosyasını
+  seçer; `parseSubtitles` bunu `VTTCue` nesnelerine çevirir ve `video.addTextTrack`
+  ile eklenen tek bir parçaya koyar. Yeni dosya eskisinin yerine geçer.
+  `decodeSubtitles` eski dosyalar için kod sayfasını bayt oranından tahmin eder
+  (Farsça windows-1256'da harflerin hepsi yüksek bayttır; Türkçe windows-1254'te
+  yalnızca birkaç aksan).
+
+**Ne saklanır:** yalnızca son seçilen ses **dili** (`Preferences.audio`, `'tr'`
+gibi). Parça numarası saklanmaz, çünkü her dosyada başka sırada olabilir; dil
+saklanınca "Türkçe parçası olan her film ve bölüm onunla başlar". Altyazı dosyası
+hiçbir yere kaydedilmez. `loadedmetadata` olayında (parçalar o zaman belirir)
+`preferredTrack` kayıtlı dilin ilk parçasını bulur; yoksa dosyanın kendi varsayılanı
+kalır.
+
+**Menünün açık/kapalı durumu `App.tsx`'te** (`trackMenu`) durur, `Player`'da değil:
+Esc yığını (6.6) `App`'te olduğu için menünün Esc ile önce kapanabilmesi ancak böyle
+mümkündür.
 
 ### 6.7 Çıkış ve kilitleme
 
@@ -939,6 +991,10 @@ desteklenmiyor" satırı bunu gösterir.
   ←/→ 10 sn sarma. Bir `role="dialog"` açıksa (Modal) tuşlar yok sayılır. TV
   tuş kodları (415 oynat, 19 duraklat, 413 durdur, 417/412 ileri/geri, 461 geri)
   ortak kodda durur ve macOS'ta tetiklenmez.
+- **Ses ve altyazı menüsü:** `audioTracks` ve yüklenen altyazı parçası React state'i
+  değildir, tarayıcı nesneleridir. `bump` (bir sayaç `useReducer`) bu nesnelerde bir
+  şey değişince bileşeni yeniden çizdirir; liste her çizimde `video.current`'tan
+  okunur. 6.6.3'e bakın.
 - **Tam ekran:** macOS'ta gerçek Fullscreen API (`requestFullscreen`),
   `fullscreenchange` olayıyla state'e geri senkronlanır. Tam ekranda
   kontroller 4,5 sn sonra saklanır.
@@ -1112,7 +1168,8 @@ testin sınırı bulanıktır. Backend'deki entegrasyon testine benzer.
   destekler.
 - Seçenekler (`options`): `tls`, `cors`, `catalogSizes`, `videoSize`,
   `videoBitrate`, `videoDuration`, `live` (kayan pencereli canlı HLS), `audio`
-  (`aac`/`ac3`/`eac3`/`mp2`), `video` (`h264`/`hevc`/`hevc10`),
+  (`aac`/`ac3`/`eac3`/`mp2`), `dubs` (`.mp4` içinde iki ses dili: İngilizce 440 Hz,
+  Türkçe 880 Hz), `video` (`h264`/`hevc`/`hevc10`),
   `perConnectionBps` (bağlantı başına hız sınırı), `oneStreamOnly` (tek
   bağlantılı hesap), `uneven` (dalgalanan hız).
 - HEVC üretimi `hevc_videotoolbox` kullanır, yani yalnızca macOS'ta çalışır.
@@ -1134,6 +1191,8 @@ testin sınırı bulanıktır. Backend'deki entegrasyon testine benzer.
 | `test:cushion`, `test:cushion:safety` | Büyük tampon beklemesi ve **asla kilitlenmemesi** |
 | `test:rate` | Hız ölçümünün doğruluğu |
 | `test:keychain` | Kayıtlı hesap, Anahtar Zinciri, kilit açma, silme |
+| `test:order` | Sıralama: kanal/liste/favori taşıma, arama sırasında kapalı, ilk açılan liste, kalıcılık, sıfırlama |
+| `test:tracks` | Ses ve altyazı: iki dublaj listelenir, geçiş çözülen sesi değiştirir, dil film/bölümde hatırlanır, altyazı dosyası (UTF-8, windows-1254, Farsça) görüntüde çıkar, bozuk dosya reddedilir, Esc önce menüyü kapatır |
 | `test:lock` | Liste yönetimi: Ayarlar'dan kilitle/gizle, PIN, her yerde gizleme, göstermek için PIN, yeniden kilitle, hatalı deneme sınırı, kalıcılık |
 | `test:posters` | Afiş/logo: görünüm, eksik görselde baş harfler, kapatma, adresin sayfada ve kitaplıkta olmaması, favori afişinin kalıcılığı |
 | `test:integration` | Electron'suz: Xtream + vekil + büyük katalog |
