@@ -1,144 +1,265 @@
-# MRT-Player · macOS
+# MRT-Player for macOS
 
-Kendi kullanım hakkınız olan Xtream hesabıyla çalışan yerel IPTV oynatıcı.
-Hazır kanal, film, dizi, abonelik veya IPTV kaynağı içermez. Apple Silicon Mac
-için Electron + React + TypeScript ile üretilir. TV sürümü ayrı `webOs` deposundadır.
+A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-## Başlatma
+![Version](https://img.shields.io/badge/version-0.2.1-blue)
+![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
+![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
-Node 22 ve npm 10 ile test edildi. macOS Apple Silicon gerekir.
+**Bring your own account and content.** MRT-Player does not include channels, playlists, subscriptions, or an IPTV service. Use an account and content you are authorized to access.
+
+The application interface is currently in **Turkish**. A [Turkish usage guide](README.tr.md) is also available. This repository contains the macOS application; the LG webOS application is maintained separately.
+
+## Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Build a macOS application](#build-a-macos-application)
+- [Using the player](#using-the-player)
+- [Privacy and account storage](#privacy-and-account-storage)
+- [Architecture](#architecture)
+- [Development and verification](#development-and-verification)
+- [Known limitations](#known-limitations)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+| Area | Capabilities |
+| --- | --- |
+| Live TV | Category browsing, channel search, short EPG, HLS playback, automatic retry after transient interruptions |
+| Movies and series | Metadata and detail screens, seasons and episodes, seeking, pause, and playback resume |
+| Personal library | Favorites, recent viewing history, custom category and item order, and local preferences |
+| List management | Visible, PIN-locked, or hidden categories across live TV, movies, and series |
+| Audio and subtitles | Select available audio tracks, remember the preferred language, and load local `.srt` or `.vtt` subtitles |
+| Artwork | Optional provider logos and posters, with fallback tiles when images are unavailable |
+| Playback diagnostics | Resolution, buffered duration, dropped frames, startup timing, interruptions, and media transfer statistics |
+| Desktop controls | Keyboard navigation, fullscreen, volume, mute, and a resizable desktop window |
+
+Playback uses conservative buffering and bounded recovery attempts. The media gateway handles upstream connections and adapts parallel movie transfers to the account's reported connection limit. Catalog browsing loads a category first, rather than immediately downloading every item.
+
+## Requirements
+
+- **macOS on Apple Silicon (`arm64`)** for the supported application package.
+- **Node.js 22 and npm 10**, the versions used for local development and validation.
+- An Xtream-compatible server address, username, and password.
+- Network access to your provider and its media servers.
+
+Intel Mac, Windows, and Linux packages are not configured in the current packaging script. Stream playback depends on the provider, network conditions, and codecs available in Electron's Chromium runtime.
+
+## Quick start
 
 ```sh
+git clone https://github.com/Morteza-Malekii/mrt-player-macos.git
+cd mrt-player-macos
 npm ci
 npm start
 ```
 
-İlk açılışta sunucu adresinizi (`https://sunucu:port` veya yetki verdiğiniz
-`http://sunucu:port`), kullanıcı adınızı ve şifrenizi **uygulama ekranına** girin.
-HTTP kullanımı için açık metin aktarımını ekrandan onaylamanız gerekir.
-Giriş bilgilerini `.env`, komut satırı, kod veya test dosyasına yazmayın.
+`npm start` builds the renderer and Electron processes, then launches the app.
 
-## Kurulabilir uygulama
+On the login screen:
+
+1. Enter your server address, such as `https://provider.example:443`.
+2. Enter the username and password issued by your provider.
+3. Choose whether to save the account on this Mac.
+4. Sign in and select a category or item.
+
+Enter credentials **inside the application**. An `.env` file is not required. Avoid putting account details in source files, shell commands, tests, screenshots, or GitHub issues. Connecting over plain HTTP requires explicit confirmation in the login screen.
+
+## Build a macOS application
 
 ```sh
 npm run package
 open 'release/MRT-Player-darwin-arm64/MRT-Player.app'
 ```
 
-`release/MRT-Player-darwin-arm64/MRT-Player.app` oluşturulur. Paket yerel
-geliştirme için ad hoc imzalanır; Apple Developer notarizasyonu yoktur. İlk
-açılışta macOS engellerse Finder'da uygulamaya Control tuşuyla tıklayıp **Aç**
-seçin. Ad hoc imza güncellemelerde değişebileceğinden Anahtar Zinciri yeniden
-izin isteyebilir; bu durumda uygulama giriş ekranından hesabı tekrar ekleyin.
-Uygulama simgesi `assets/MRT-Player.icns` olarak sürümlenir; yeniden üretmek yalnızca
-simgeyi değiştirmek isterseniz Python/Pillow ile `python3 scripts/icons.py` gerekir.
-Önceki kurulumdaki hesap ve ayarları korumak için mevcut uygulama veri dizini ve
-macOS paket kimliği kullanılmaya devam eder.
+The packaging command runs type checking, unit tests, and the build before creating:
 
-## Kullanım
+```text
+release/MRT-Player-darwin-arm64/MRT-Player.app
+```
 
-Sol menüden Canlı TV, Filmler, Diziler, Favoriler, Son izlenenler veya Ayarlar'ı
-seçin. Kategori ve arama listesinden kanal açın. Filmler ayrıntı sayfasından,
-diziler sezon/bölüm listesinden açılır. EPG verisi hesabın Xtream kısa program
-rehberinden alınır. Sağdaki oynatıcı tam ekrana geçebilir; VOD içinde sarma,
-ses ve duraklatma vardır. Alanlar arasında Tab, seçim için Enter; `Esc` geri,
-`F` tam ekran, `M` sessiz, boşluk oynat/duraklat kullanılır.
+The `.app` is **ad hoc signed** for local use. It is not notarized with an Apple Developer certificate. If macOS blocks the first launch, use Finder's Control-click → **Open** flow when available. A changed ad hoc signature can also cause Keychain to request access again after an update; re-enter the account in the application if needed.
 
-Listeler Ayarlar → **Listeleri yönet** bölümünden yönetilir. Canlı TV, film ve dizi
-kategorilerinin her biri üç durumdan birinde olur: **Görünür**, **Kilitli** veya
-**Gizli**. Gizli liste ve içeriği hiçbir yerde (liste, **Tüm içerikler**, arama,
-favoriler, son izlenenler) gösterilmez. Kilitli liste adıyla görünür ama içeriği
-PIN girilene kadar gizlidir; ilk kilitte 4–8 haneli bir PIN belirlenir. PIN tüm
-kilitli listeleri açar; soldaki **Listeleri yeniden kilitle** veya uygulamadan çıkış
-tekrar gizler. PIN belirlendikten sonra kilitli ya da gizli bir listeyi tekrar
-**Görünür** yapmak da PIN ister; kilitlemek ve gizlemek istemez. Ayarlar → Liste
-kilidi altında PIN değiştirilir, tüm kilitler kaldırılır. PIN unutulursa hesabı
-cihazdan silmek tek sıfırlama yoludur. Bu özellik çocuk ve ev içi gizlilik içindir.
+Build output and installed dependencies are excluded from Git. Clone and build from source; this repository does not automatically publish installers or GitHub Releases.
 
-Sıralamayı siz belirlersiniz. Listelerin sırası Ayarlar → **Listeleri yönet**'te
-oklarla (başa al, yukarı, aşağı) değiştirilir; ilk sıradaki liste Canlı TV, Filmler
-veya Diziler açıldığında ilk görünen olur. Bir listenin içindeki kanalları veya
-filmleri değiştirmek için liste başlığındaki **Sırala** düğmesine basın; kartlar
-oynatmak yerine başa al, öne al ve geriye al düğmelerini gösterir. **Favoriler**
-de aynı şekilde sıralanır. Arama yazarken sıralama kapanır. Sıra yalnızca bu
-cihazda, hesabın kitaplığında saklanır; **Sırayı sıfırla** sağlayıcının sırasına
-döner. Yalnızca sizin düzenlediğiniz kısım saklanır, sağlayıcı yeni kanal eklerse
-bunlar düzenlediğiniz kanalların ardından görünür.
+The application icon is tracked at `assets/MRT-Player.icns`. Regenerating it with `python3 scripts/icons.py` is optional and requires Python with Pillow.
 
-Kanallar, filmler ve diziler kutucuk (kart) ızgarasında gösterilir: ad kartın alt
-kenarındadır, filmlerde puan köşede görünür. Ayarlar → **Kanal ve film afişlerini
-göster** açılırsa kartlar sağlayıcının verdiği logo veya afişle dolar; görsel yoksa veya yüklenemezse kanalın baş harfleri gösterilir. Görseller
-sayfaya değil ana sürece indirilir ve sayfa yalnızca opak `kiyi://image/...` adresini
-görür.
+## Using the player
 
-Film ve dizi bölümlerinde oynatıcının sağ altındaki **Ses ve altyazı** düğmesi
-bir menü açar. **Ses** altında dosyadaki dublaj/dil parçaları (Türkçe, İngilizce,
-Farsça...) listelenir; seçtiğiniz dil hatırlanır ve o dilde parçası olan sonraki her
-film ve bölüm onunla başlar. AC-3, E-AC-3 ve DTS sesler macOS'taki Chromium'da
-çözülemediği için listelenmez; bu codec'lerle yayımlanmış bir dublaj görünmez.
-**Altyazı** altında **Altyazı dosyası yükle…** ile bilgisayarınızdan bir `.srt` ya da
-`.vtt` dosyası seçilir (UTF-8, Türkçe windows-1254 ve Farsça windows-1256 dosyalar
-okunur); altyazı görüntünün üstünde çıkar, **Kapalı** ile gizlenir. Dosyanın içine
-gömülü altyazılar gösterilemez, çünkü Chromium bunları sayfaya vermez. Yüklenen
-altyazı yalnızca o oynatma için geçerlidir. Canlı yayında bu düğme yoktur.
+### Browse and play
 
-Büyük listelerde uygulama önce ilk kategoriyi yükler; tüm kataloğu görmek veya
-genel arama yapmak için **Tüm içerikler**'i seçin. Oynatma ayarı yoktur: canlı
-yayın HLS olarak hls.js ile, geniş tamponla açılır; film paralel indirmeyi hesabın
-bağlantı sınırına göre kendisi belirler. Kesinti olursa oynatıcıdaki **Akış
-bilgisi** düğmesiyle çözünürlük, ön tampon, atlanan kare ve kesinti sayısını
-kontrol edin. Sonuç sunucunun verdiği akışa, ağ hızına ve videonun codec'ine bağlıdır.
+The sidebar contains **Canlı TV** (Live TV), **Filmler** (Movies), **Diziler** (Series), **Favoriler** (Favorites), **Son izlenenler** (Recent), and **Ayarlar** (Settings).
 
-Hesap kaydı isteğe bağlıdır. Kaydedilen hesap Electron `safeStorage` ile macOS
-Anahtar Zinciri anahtarı kullanılarak şifrelenir. Kategori favorileri, izleme
-geçmişi ve ayarlar yerel uygulama veri dizininde tutulur. Oynatıcıya hesap URL'si
-aktarılmaz; Mac ana süreç HLS ve VOD verisini opak medya adresleriyle iletir.
-Hiçbir uzak MRT-Player sunucusu yoktur; ağ bağlantısı yalnızca girdiğiniz Xtream
-sunucusuna, sağlayıcının medya yönlendirmelerine ve **afişler açıksa** sağlayıcının
-listede verdiği görsel adreslerine yapılır. Afişler **varsayılan olarak kapalıdır**;
-siz açmadıkça sağlayıcı dışında hiçbir siteye bağlanılmaz. Açarsanız bu adresler
-çoğu zaman aynı sunucudadır ama başka bir CDN veya üçüncü taraf bir görsel sitesi
-de olabilir; o durumda o site IP adresinizi ve hangi listeyi açtığınızı görür.
-Uygulama telemetri, istatistik veya hata raporu göndermez ve günlük dosyası tutmaz.
+Choose a category, search within its contents, and select a tile. Movies open through their detail screen; series provide season and episode selection. Live channels can show the provider's short electronic program guide.
 
-## Doğrulama ve geliştirme
+For a search across the complete catalog, select **Tüm içerikler** (All content). Category browsing is preferable for very large libraries because it avoids loading everything at once.
+
+### Manage lists and favorites
+
+Open **Ayarlar → Listeleri yönet** (Settings → Manage lists) to reorder categories or change their visibility:
+
+- **Visible:** the category and its content are accessible.
+- **Locked:** the category remains listed, but its content requires a PIN.
+- **Hidden:** the category and its content are excluded from browsing, search, favorites, and recent items, including after unlocking other lists.
+
+The first category in your custom order becomes the initial category for that content type. Use **Sırala** (Arrange) in a category or Favorites to move items to the beginning, forward, or backward. **Sırayı sıfırla** (Reset order) restores provider order. Changes stay on this Mac and do not change the provider's catalog.
+
+One 4–8 digit PIN unlocks the locked lists for the current session. Relock them from the sidebar or close the app. If a PIN exists, making a locked or hidden category visible also requires it. Five incorrect attempts trigger a 30-second wait. If the PIN is forgotten, removing the account from the device is the reset path.
+
+### Audio and subtitles
+
+For a movie or episode, open **Ses ve altyazı** (Audio and subtitles) in the player's lower-right corner:
+
+- Choose an available audio track. The selected language is remembered for subsequent movies and episodes that contain a matching track.
+- Load a local `.srt` or `.vtt` file. Supported text encodings include UTF-8, UTF-16 with a BOM, Turkish Windows-1254, and Persian Windows-1256; legacy encoding detection is heuristic.
+- Select **Kapalı** (Off) to hide the loaded subtitles.
+
+External subtitles apply only to the current playback. Embedded subtitles are not exposed by the current Chromium playback path. AC-3, E-AC-3, and DTS audio tracks are not available in the audio menu. The audio/subtitle menu is not shown during live TV.
+
+### Keyboard controls
+
+| Key | Action |
+| --- | --- |
+| `Tab` / `Shift+Tab` | Move between controls |
+| `Enter` | Activate the focused control |
+| `Space` | Play or pause |
+| `F` | Toggle fullscreen |
+| `M` | Toggle mute |
+| `Esc` | Close the current menu/dialog or return to the previous view |
+| `←` / `→` in fullscreen | Seek 10 seconds backward/forward in movies and episodes |
+
+Player shortcuts are suspended while typing in form fields. Double-clicking the video also toggles fullscreen.
+
+## Privacy and account storage
+
+MRT-Player runs locally and does not require a hosted MRT-Player backend.
+
+- **Optional saved credentials:** Electron `safeStorage` encrypts the account using macOS Keychain-backed protection.
+- **Local library:** favorites, recent items, preferences, and list configuration are stored in the application's local data directory. These library records are not encrypted as a whole.
+- **Renderer isolation:** account-bearing media URLs remain in the main process; playback uses opaque `kiyi://media/...` addresses. Optional artwork uses `kiyi://image/...` addresses.
+- **Artwork off by default:** enabling posters/logos contacts the image URLs supplied by the provider. These may point to third-party CDNs or image services, which receive your image requests and IP address.
+- **Network requests:** provider API calls, media requests and redirects, and optional provider-supplied artwork. The app has no telemetry, analytics, remote error reporting, or application log files.
+- **Desktop boundary:** the renderer is sandboxed, uses context isolation, has no Node integration, and calls a restricted preload bridge. A Content Security Policy restricts resource loading.
+
+A list PIN is a household privacy feature. It does not protect the library from someone who can read or modify the local files. Only a salted PBKDF2-SHA256 PIN hash is stored.
+
+The current bundle identifier is `com.kiyi.player.mac`. The older `Kıyı Player` data directory is reused when present so an upgrade can retain local account and library data.
+
+## Architecture
+
+```text
+React renderer
+    │ restricted preload / Electron IPC
+    ▼
+Electron main process
+    ├── Xtream session and API client
+    ├── Keychain-backed credential vault
+    ├── Local library storage
+    ├── Media gateway → provider streams
+    └── Image gateway → optional provider artwork
+```
+
+| Path | Responsibility |
+| --- | --- |
+| `src/core/` | Xtream models and API helpers, EPG, library normalization, ordering, PINs, audio/subtitle helpers |
+| `src/runtime/` | Session actions, HTTP transport, local storage |
+| `src/platform/mac/` | Electron main/preload processes, media and image gateways, playback adapter |
+| `src/ui/` | React screens, player controls, list management, styles |
+| `scripts/` | Build, packaging, local fixtures, integration and Electron checks |
+| `tests/` | Unit tests |
+| `assets/` | Application icon |
+| `docs/` | Architecture notes, implementation history, and validation records |
+
+The runtime dependencies are React, React DOM, hls.js, and mpegts.js. TypeScript and esbuild handle compilation; Electron Packager produces the macOS bundle.
+
+## Development and verification
+
+Run the standard local verification:
 
 ```sh
 npm run check
 npm run test:integration
-npm run test:e2e
-npm run test:4k
-npm run test:switch
-npm run test:recover
-npm run test:lanes
-npm run test:solo
-npm run test:cushion
-npm run test:cushion:safety
-npm run test:rate
-npm run test:keychain
-npm run test:lock
-npm run test:order
-npm run test:tracks
-npm run test:posters
-npm run test:packaged
-npm run test:4k:packaged
 ```
 
-Testler rastgele kimlikli, loopback Xtream sunucusu ve yalnızca yerelde üretilen
-12 saniyelik test videosu kullanır. `test:e2e`, gerçek Electron penceresinde
-girişten videoya, EPG'ye, VOD ve dizi kontrollerine kadar akışı otomatik dener.
-`test:4k`, yerel 3840×2160 HLS test yayınında oynatmanın ilerlemesini, kare
-kaybını ve bilgi panelini kontrol eder. `test:switch`, kanal değişiminin
-süresini ve havuzdaki sunucu bağlantısının yeniden kullanılıp kullanılmadığını
-ölçer. `test:recover`, bant genişliği sınırlandırılmış kayan pencereli canlı bir
-yayında bağlantıyı koparıp kanalın kendi kendine dönmesini, sunucu tamamen
-kapandığında da kullanıcının bilgilendirilmesini dener. Test medyası ve sonuçları
-üretim `.app` içine girmez. Bu testler, gerçek sağlayıcının 4K yayınını ölçmez.
+`check` runs TypeScript checking, unit tests, and the build. The integration suite uses a loopback Xtream fixture. These commands do not require a real IPTV account.
 
-Ortak kod `src/core`, `src/runtime`, `src/ui` altındadır. TV deposuyla aynı
-sürümlü kopyalar ayrı depolarda tutulur. Bu sürümde Mac oynatma iyileştirmeleri
-TV'ye henüz taşınmadığından `npm run shared:check` fark gösterir. TV çalışmasına
-yeniden başlandığında ortak modüller gözden geçirilerek eşitlenmelidir. Her depo
-tek başına `npm ci` ve build ile çalışır. Mimari/aşama kaydı
-[docs/PLAN.md](docs/PLAN.md), test sınırları [docs/VALIDATION.md](docs/VALIDATION.md)
-içindedir.
+Additional checks exercise the real Electron application and specific playback behavior:
+
+| Command | Coverage |
+| --- | --- |
+| `npm run test:e2e` | Login, navigation, EPG, movies, series, and playback |
+| `npm run test:4k` | Synthetic local 3840×2160 HLS playback and diagnostics |
+| `npm run test:switch` | Channel-switch timing and upstream connection reuse |
+| `npm run test:recover` | Interrupted and bandwidth-limited live streams |
+| `npm run test:lanes` / `npm run test:solo` | Parallel media transfers and single-connection accounts |
+| `npm run test:cushion` / `npm run test:cushion:safety` | Buffer recovery and bounded waiting |
+| `npm run test:rate` | Media transfer behavior under throttling |
+| `npm run test:keychain` | Saved account and Keychain behavior |
+| `npm run test:lock` | PIN, visibility, and relocking flows |
+| `npm run test:order` | Custom ordering and persistence |
+| `npm run test:tracks` | Audio selection and external subtitles |
+| `npm run test:posters` | Optional images, fallback tiles, and privacy defaults |
+| `npm run test:packaged` / `npm run test:4k:packaged` | Existing packaged `.app` verification |
+
+Build the application with `npm run package` before running packaged checks. Electron checks open application windows and use disposable local profiles. Test media is synthesized locally with ffmpeg; fixtures use randomly generated account identifiers. Test media, results, and fixtures are excluded from the packaged app.
+
+Synthetic 4K tests describe local fixture behavior. They do not establish real-provider compatibility or long-term streaming reliability. See [validation records](docs/VALIDATION.md) for measured results and the limits of each check.
+
+### Relationship to the webOS version
+
+The macOS and webOS projects keep separately versioned copies of `src/core`, `src/runtime`, and `src/ui`. Each repository builds independently. Their code currently differs; newer macOS playback and UI features have not all been ported to TV.
+
+`npm run shared:check` expects a sibling `../webOs` checkout by default and currently reports differences. To compare against another location:
+
+```sh
+npm run shared:check -- /path/to/webOs
+```
+
+`shared:sync` copies this repository's shared folders into the other checkout. Review platform compatibility and existing differences before using it.
+
+Additional project documents are currently in Turkish:
+
+- [Architecture and implementation plan](docs/PLAN.md)
+- [Validation results and boundaries](docs/VALIDATION.md)
+- [Frontend guide](docs/FRONTEND-REHBERI.md)
+- [Turkish usage guide](README.tr.md)
+
+## Known limitations
+
+- The packaged target is macOS Apple Silicon, with ad hoc signing and no notarization.
+- The UI is currently Turkish; selecting an audio language does not change the interface language.
+- Playback depends on the stream container, codec, provider behavior, and account connection limits. There is no bundled transcoder.
+- Embedded subtitles, subtitle timing offsets, and automatically loading provider subtitle URLs are not supported.
+- HLS movie audio-track behavior and real-provider audio switching have not been established by the local fixtures.
+- Ordering uses buttons rather than drag-and-drop. All content and Recent are not manually reorderable; stored custom orders are bounded.
+- Some older series-episode favorite/history entries lack a category ID, so category hiding/locking cannot reliably filter those legacy records.
+- The separate webOS project does not have feature parity with this macOS version.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Sign-in fails | Server address, account credentials, account status, TLS certificate validity, and explicit HTTP confirmation if needed |
+| A channel does not start | Provider availability, account connection limit, and the stream's codec/container |
+| Frequent buffering | Open **Akış bilgisi** (Stream information) to inspect buffer, dropped frames, and interruptions; check network and provider throughput |
+| An audio language is missing | The stream may omit it or encode it as unsupported AC-3, E-AC-3, or DTS |
+| Subtitles do not appear | Load an external `.srt`/`.vtt`; embedded subtitles are unsupported |
+| The saved account cannot be opened after an update | Check Keychain access or re-enter the account through the login screen |
+| A category or favorite is missing | Check list visibility and PIN state in Settings → Manage lists |
+| `shared:check` fails | Confirm the sibling checkout exists; platform code currently differs, as documented above |
+
+When reporting a problem, include the app version, macOS version, relevant playback format/codec, and reproduction steps. Remove account credentials and stream URLs from any attachments.
+
+## Contributing
+
+Open an issue to describe a bug or propose a change. For a code contribution, keep platform-specific work under `src/platform/mac/`, run `npm run check`, and run the relevant integration or Electron checks for changed behavior. Update documentation when user-visible behavior changes.
+
+Use the local fixtures for reproduction. Do not commit provider credentials, real account data, private playlists, generated build output, or local test profiles.
+
+## License
+
+A project license has not been added to this repository. Third-party dependencies retain their respective licenses.
