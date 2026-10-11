@@ -8,7 +8,7 @@ A local IPTV player for Apple Silicon Macs, built with Electron, React, and Type
 
 **Bring your own account and content.** MRT-Player does not include channels, playlists, subscriptions, or an IPTV service. Use an account and content you are authorized to access.
 
-The application interface is currently in **Turkish**. A [Turkish usage guide](README.tr.md) is also available. This repository contains the macOS application; the LG webOS application is maintained separately.
+The application interface is currently in **Turkish**. This repository contains the macOS application; the LG webOS application is maintained separately.
 
 ## Contents
 
@@ -226,7 +226,6 @@ Additional project documents are currently in Turkish:
 - [Architecture and implementation plan](docs/PLAN.md)
 - [Validation results and boundaries](docs/VALIDATION.md)
 - [Frontend guide](docs/FRONTEND-REHBERI.md)
-- [Turkish usage guide](README.tr.md)
 
 ## Known limitations
 
