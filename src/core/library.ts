@@ -31,7 +31,7 @@ export function normalizeLibrary(input: unknown): Library {
   return {
     favorites: favorites.filter(x => { const key = itemKey(x); if (seen.has(key)) return false; seen.add(key); return true; }),
     recent: (Array.isArray(v.recent) ? v.recent : []).map(row => ({ item: cleanItem(object(row).item), at: Number(object(row).at) || 0, position: Math.max(0, Number(object(row).position) || 0) })).filter(row => row.item).slice(0, 50) as Library['recent'],
-    preferences: { volume: typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : DEFAULT_LIBRARY.preferences.volume, muted: p.muted === true, resume: p.resume !== false, posters: p.posters === true, ...(typeof p.audio === 'string' && /^[a-z]{2,3}$/.test(p.audio) ? { audio: p.audio } : {}) },
+    preferences: { volume: typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : DEFAULT_LIBRARY.preferences.volume, muted: p.muted === true, resume: p.resume !== false, posters: p.posters === true, autoRetry: p.autoRetry === true, ...(typeof p.audio === 'string' && /^[a-z]{2,3}$/.test(p.audio) ? { audio: p.audio } : {}) },
     locks: { ...locks, categories: locks.categories.filter(key => !hidden.includes(key)) },
     hidden,
     order: cleanOrder(v.order)

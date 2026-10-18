@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, safeStorage, session, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, powerSaveBlocker, protocol, safeStorage, session, shell, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { promisify } from 'util';
@@ -7,6 +7,8 @@ import { FileLibraryStore, atomicWrite, exists, remove } from '../../runtime/sto
 import { AppError } from '../../core/errors';
 import { MediaGateway } from './media';
 import { ImageGateway } from './images';
+import { DownloadManager } from './downloads';
+import { RecordingManager } from './recordings';
 import type { Action, Credentials } from '../../core/models';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'kiyi', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -32,11 +34,25 @@ if (fs.existsSync(previousData)) app.setPath('userData', previousData);
 if (process.env.KIYI_TEST_MODE === '1' && process.env.KIYI_TEST_DATA && path.isAbsolute(process.env.KIYI_TEST_DATA)) app.setPath('userData', process.env.KIYI_TEST_DATA);
 app.whenReady().then(async () => {
   const gateway = new MediaGateway(), images = new ImageGateway(), data = app.getPath('userData');
-  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', gateway.add, gateway.clear, gateway.stats, gateway.useLimit);
+  const downloadsFolder = () => process.env.KIYI_TEST_MODE === '1' && process.env.KIYI_TEST_DOWNLOADS && path.isAbsolute(process.env.KIYI_TEST_DOWNLOADS) ? process.env.KIYI_TEST_DOWNLOADS : path.join(app.getPath('downloads'), 'MRT-Player');
+  const downloads = new DownloadManager(downloadsFolder, file => shell.showItemInFolder(file), file => shell.trashItem(file), path.join(data, 'downloads.json'));
+  // The MP4 converter ships next to the app (scripts/build.mjs copies it); inside a packaged app it sits
+  // beside the archive, not in it, because a program cannot run from inside an asar file.
+  let blocker = -1;
+  const recordings = new RecordingManager({
+    folder: downloadsFolder, index: path.join(data, 'recordings.json'), downloads, show: file => shell.showItemInFolder(file),
+    ffmpeg: path.join(__dirname, 'ffmpeg').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+    // A recording needs the Mac awake; this keeps it from being suspended while one runs or is planned.
+    keepAwake: on => { if (on && blocker < 0) blocker = powerSaveBlocker.start('prevent-app-suspension'); else if (!on && blocker >= 0) { powerSaveBlocker.stop(blocker); blocker = -1; } },
+    tickMs: process.env.KIYI_TEST_MODE === '1' ? 500 : 5000
+  });
+  app.on('before-quit', () => recordings.shutdown());
+  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', gateway.add, gateway.clear, gateway.stats, gateway.useLimit, downloads, recordings);
   const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: kiyi:; media-src kiyi: blob:; connect-src kiyi:; worker-src blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
   protocol.handle('kiyi', async request => {
     const url = new URL(request.url);
     if (url.host === 'media') return gateway.handle(request);
+    if (url.host === 'local') return downloads.serve(request);
     if (url.host === 'image') return images.handle(request, runtime.posterUrl);
     if (url.host !== 'app') return new Response(null, { status: 404 });
     const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);

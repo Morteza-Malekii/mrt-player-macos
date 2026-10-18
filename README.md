@@ -31,6 +31,8 @@ The application interface is currently in **Turkish**. This repository contains 
 | --- | --- |
 | Live TV | Category browsing, channel search, short EPG, HLS playback, automatic retry after transient interruptions |
 | Movies and series | Metadata and detail screens, seasons and episodes, seeking, pause, and playback resume |
+| Downloads | Save a movie or series episode to `~/Downloads/MRT-Player`, one at a time, with progress, cancel, resume after a failure, offline playback in the app (from the Downloads list or right beside Play on the film or episode screen), Show in Finder, and Move to Trash; file size shown before saving, saved items recognised, and an optional automatic retry (Settings → İndirmeler: after 5 s, 20 s, 1 min, 3 min, then every 5 min, at most 8 times, resumed from where it stopped) |
+| Recording | Record any live channel from under the player (unlimited or for a set time), or plan a recording from the programme guide or by hand; plain `.ts` and HLS-only channels both work, dropped connections are picked up again, up to 3 channels at once; each recording is turned into an MP4 with a bundled FFmpeg (no re-encoding of the picture) and plays from the Kayıtlar list |
 | Personal library | Favorites, recent viewing history, custom category and item order, and local preferences |
 | List management | Visible, PIN-locked, or hidden categories across live TV, movies, and series |
 | Audio and subtitles | Select available audio tracks, remember the preferred language, and load local `.srt` or `.vtt` subtitles |
@@ -229,6 +231,9 @@ Additional project documents are currently in Turkish:
 
 ## Known limitations
 
+- Downloads run one at a time, and an unfinished one is cancelled when you lock the session (the account address is never stored, so it cannot continue after a restart). Finished downloads are remembered per account, play from the disk inside the app, and never enter Recent; playback from a download does not resume from where you stopped.
+- Recordings use their own connection to the provider, so the account must allow another simultaneous stream. Planned recordings only run while the app is open and the Mac is awake (the app keeps the Mac from being suspended while one is running or planned). Signing out (or quitting) ends a running recording; the raw `.ts` is kept and turned into an MP4 at the next sign-in. HLS channels that are encrypted or use fragmented MP4 cannot be recorded.
+- Recordings are converted with the FFmpeg binary from the `ffmpeg-static` package (copied to `dist/ffmpeg` by `npm run build` and kept outside the app archive when packaged); its licence is copied next to it as `ffmpeg.LICENSE` and applies to the bundled binary.
 - The packaged target is macOS Apple Silicon, with ad hoc signing and no notarization.
 - The UI is currently Turkish; selecting an audio language does not change the interface language.
 - Playback depends on the stream container, codec, provider behavior, and account connection limits. There is no bundled transcoder.
