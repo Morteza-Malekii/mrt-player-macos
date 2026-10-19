@@ -81,3 +81,44 @@ svg{flex-shrink:0;vertical-align:middle}button svg+span{margin-left:10px}button.
 .track-menu .error{margin-top:10px}
 .player-full .track-menu{right:45px;bottom:105px;width:min(560px,calc(100% - 90px))}
 video::cue{font-size:1.1em;background:rgba(0,0,0,.72);color:#fff}
+
+.episode-row{display:flex;gap:8px;align-items:stretch;margin-top:10px}
+.episode-row .episode{margin-top:0;flex:1;width:auto}
+.episode-download{display:flex;align-items:center;gap:8px;padding:0 16px;background:#1b2a38;font-size:12px;white-space:nowrap}
+.episode-download span{margin:0}
+.episode-download:disabled{color:#80e1be;opacity:.8;cursor:default}
+.downloads{overflow:auto;max-width:900px;padding:0 5px 35px}
+.download-row{background:#131f2b;border:1px solid #2b3a49;border-radius:13px;margin-bottom:12px;padding:16px 20px}
+.download-head{display:flex;align-items:center;gap:12px}
+.download-head strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500}
+.download-bar{height:6px;border-radius:3px;background:#22313f;margin:12px 0 8px;overflow:hidden}
+.download-bar>span{display:block;height:100%;background:#80e1be;transition:width .4s linear}
+.download-bar.unknown>span{width:30%;animation:slide 1.4s ease-in-out infinite alternate}
+@keyframes slide{from{margin-left:0}to{margin-left:70%}}
+.download-row .button-row{margin-top:10px}
+.download-row .error{margin:10px 0 0;max-width:none;text-align:left}
+
+.inline-download{margin:14px 0 4px}
+.inline-download .download-bar{margin:0 0 8px}
+.inline-download small{display:block;font-size:12px;line-height:1.5}
+.inline-download-error{color:#ffbfba}
+.inline-download .link-button{padding:4px 0}
+.button-row.detail-actions{align-items:center}
+.button-row.detail-actions button{display:inline-flex;align-items:center;gap:8px;margin:0;line-height:1.2}
+.button-row.detail-actions button svg{margin:0}
+
+.record-bar{margin-top:14px;padding:12px 14px;border:1px solid #2b3a49;border-radius:12px;background:#111c28}
+.record-bar small{display:block;margin-top:8px;font-size:11px}
+.record-idle,.record-live{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:13px}
+.record-idle button,.record-live button{margin:0;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.record-idle select{margin:0;width:auto;font-size:12px}
+.record-button{color:#ffb4ab;border-color:#6b3532}
+.record-live{font-variant-numeric:tabular-nums}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:#ff5a4f;animation:recpulse 1.2s ease-in-out infinite}
+@keyframes recpulse{50%{opacity:.25}}
+.nav-count.rec-count{background:#4a2423;color:#ffb4ab}
+.programme-record{margin:8px 0 0;padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:6px;color:#ffb4ab}
+.schedule-fields{display:flex;flex-wrap:wrap;gap:16px;margin:16px 0}
+.schedule-fields label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#a7b4c4}
+.schedule-fields input{font-size:14px}
+.downloads>.muted{font-size:12px;line-height:1.6;margin:0 0 16px}

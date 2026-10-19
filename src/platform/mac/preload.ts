@@ -1,4 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { Action } from '../../core/models';
-const actions: Action[] = ['status', 'login', 'unlock', 'logout', 'categories', 'items', 'epg', 'detail', 'play', 'stop', 'library', 'saveLibrary', 'heartbeat', 'mediaStats'];
+const actions: Action[] = ['status', 'login', 'unlock', 'logout', 'categories', 'items', 'epg', 'detail', 'play', 'stop', 'library', 'saveLibrary', 'heartbeat', 'mediaStats', 'download', 'downloads', 'cancelDownload', 'retryDownload', 'removeDownload', 'revealDownload', 'playDownload', 'trashDownload', 'downloadSize', 'downloadSettings', 'record', 'recordSchedule', 'recordings', 'stopRecording', 'removeRecording', 'retryRecording', 'revealRecording'];
 contextBridge.exposeInMainWorld('kiyi', { call: (action: Action, payload?: unknown) => actions.includes(action) ? ipcRenderer.invoke('kiyi:call', action, payload) : Promise.resolve({ ok: false, error: { code: 'METHOD', message: 'Geçersiz işlem.' } }) });

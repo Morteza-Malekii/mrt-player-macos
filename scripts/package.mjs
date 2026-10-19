@@ -6,7 +6,7 @@ await mkdir('release/stage', { recursive: true });
 await cp('dist', 'release/stage/dist', { recursive: true, force: true });
 const { version } = JSON.parse(await readFile('package.json', 'utf8'));
 await writeFile('release/stage/package.json', JSON.stringify({ name: 'mrt-player-macos', productName: 'MRT-Player', version, main: 'dist/main.cjs', description: 'Kişisel Xtream oynatıcı' }));
-const results = await packager({ dir: 'release/stage', name: 'MRT-Player', appBundleId: 'com.kiyi.player.mac', appCategoryType: 'public.app-category.video', platform: 'darwin', arch: 'arm64', out: 'release', icon: path.resolve('assets/MRT-Player.icns'), asar: true, overwrite: true, prune: false });
+const results = await packager({ dir: 'release/stage', name: 'MRT-Player', appBundleId: 'com.kiyi.player.mac', appCategoryType: 'public.app-category.video', platform: 'darwin', arch: 'arm64', out: 'release', icon: path.resolve('assets/MRT-Player.icns'), asar: { unpack: '**/dist/ffmpeg' }, overwrite: true, prune: false });
 const bundle = path.join(results[0], 'MRT-Player.app');
 execFileSync('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none', bundle], { stdio: 'inherit' });
 execFileSync('codesign', ['--verify', '--deep', '--strict', bundle], { stdio: 'inherit' });

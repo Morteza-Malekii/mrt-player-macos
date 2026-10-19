@@ -44,8 +44,8 @@ test('kitaplık URL saklamaz, geçmiş sınırlı ve favori türleri bağımsız
 test('kaldırılan oynatma tercihleri eski kayıttan temizlenir, kalanlar korunur', () => {
   // A library saved by an older version still carries the removed choices; they must not leak back.
   const old = normalizeLibrary({ preferences: { volume: 0.5, muted: true, resume: false, liveFormat: 'ts', agent: 'vlc', buffer: 'large', lanes: 4 } });
-  assert.deepEqual(old.preferences, { volume: 0.5, muted: true, resume: false, posters: false });
-  assert.deepEqual(normalizeLibrary({}).preferences, { volume: 0.8, muted: false, resume: true, posters: false });
+  assert.deepEqual(old.preferences, { volume: 0.5, muted: true, resume: false, posters: false, autoRetry: false });
+  assert.deepEqual(normalizeLibrary({}).preferences, { volume: 0.8, muted: false, resume: true, posters: false, autoRetry: false });
 });
 test('paralel indirme genişliği hesabın bağlantı sınırından gelir ve bir yuva boş kalır', () => {
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 20].map(lanesFor), [1, 1, 1, 2, 3, 4, 4, 4]);
