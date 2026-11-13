@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import type { CueBatch, Item, MediaTrack, MediaTracks, Platform, Playback, Preferences } from '../core/models';
-import { fitNote } from '../core/subtitles';
-import { MAX_SUBTITLE_BYTES, canRemux, decodeSubtitles, languageKey, mediaTrackNames, nativeIndex, parseSubtitles, preferredTrack, startingTrack, trackNames } from '../core/tracks';
+import { itemKey, type CueBatch, type Item, type MediaTrack, type MediaTracks, type Platform, type Playback, type Preferences, type SavedPick, type SavedSubtitles } from '../core/models';
+import { SUBTITLE_FONTS, SUBTITLE_SIZE, clampSubtitleSize, fitNote, isSubtitleFont } from '../core/subtitles';
+import { type Cue, MAX_SUBTITLE_BYTES, canRemux, decodeSubtitles, languageKey, mediaTrackNames, nativeIndex, parseSubtitles, preferredTrack, startingTrack, trackNames } from '../core/tracks';
 import { Icon } from './Icon';
 import { PlaybackStats, type PlaybackTimings } from './PlaybackStats';
 import { SubtitleSearch } from './SubtitleSearch';
@@ -13,7 +13,13 @@ export const timeLabel = (seconds: number) => { if (!Number.isFinite(seconds) ||
 // through the converter (another route for the same title, `remux`), and a text subtitle inside the file
 // is shown as it is read (`subtitleCues`). Without that list the player shows what Chromium offers.
 type AudioTrack = { id: string; language: string; enabled: boolean };
-type Choice = 'off' | 'file' | number;
+// Two subtitles can be on at once, for learning a language: the main one at the bottom and a second one above the
+// picture. Each slot has its own text track and its own source: nothing, a file the viewer loaded or found, or a
+// subtitle inside the film.
+type Slot = 'main' | 'second';
+type Pick = 'off' | { file: number } | { track: number };
+const SLOTS: Slot[] = ['main', 'second'];
+const same = (a: Pick, b: Pick) => a === b || (typeof a === 'object' && typeof b === 'object' && (('file' in a && 'file' in b && a.file === b.file) || ('track' in a && 'track' in b && a.track === b.track)));
 type WithAudio = HTMLVideoElement & { audioTracks?: ArrayLike<AudioTrack> & EventTarget };
 const audioTracksOf = (v: HTMLVideoElement | null) => Array.from((v as WithAudio | null)?.audioTracks || []);
 const selectAudio = (tracks: AudioTrack[], index: number) => { tracks[index].enabled = true; tracks.forEach((t, i) => { if (i !== index) t.enabled = false; }); };
@@ -24,8 +30,15 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
   const [controls, setControls] = useState(true), [statsVisible, setStatsVisible] = useState(false); const hideTimer = useRef<ReturnType<typeof setTimeout>>();
   const progressAt = useRef(0), positionAt = useRef(0), waitTimer = useRef<ReturnType<typeof setTimeout>>(), errorTimer = useRef<ReturnType<typeof setTimeout>>(), stallTimer = useRef<ReturnType<typeof setTimeout>>();
   const timings = useRef<PlaybackTimings>({ startedAt: performance.now(), stalls: 0, bufferingMs: 0 });
-  const [, bump] = useReducer((n: number) => n + 1, 0), prefs = useRef(preferences), external = useRef<TextTrack>(), embedded = useRef<TextTrack>(), embeddedOf = useRef<{ id: number; next: number }>(), picker = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<string>(), [shown, setShown] = useState<Choice>('off'), [notice, setNotice] = useState(''), [caution, setCaution] = useState(''), [shift, setShift] = useState(0);
+  const [, bump] = useReducer((n: number) => n + 1, 0), prefs = useRef(preferences), picker = useRef<HTMLInputElement>(null);
+  const slotTracks = useRef<Partial<Record<Slot, TextTrack>>>({}), fileCues = useRef(new Map<number, Cue[]>()), fileIds = useRef(new Map<string, number>()), fileText = useRef(new Map<number, string>()), nextFile = useRef(1);
+  // `files` are the subtitle files loaded or found so far (`v` counts how often one was replaced); `picks` what each slot shows.
+  const [files, setFiles] = useState<Array<{ id: number; name: string; v: number }>>([]), [picks, setPicks] = useState<Record<Slot, Pick>>({ main: 'off', second: 'off' }), [target, setTarget] = useState<Slot>('main'), [secondOpen, setSecondOpen] = useState(false);
+  const [notice, setNotice] = useState(''), [caution, setCaution] = useState(''), [shift, setShift] = useState<Record<Slot, number>>({ main: 0, second: 0 });
+  // What the viewer set up for this title is kept on this Mac and comes back the next time it plays. `restored` is true
+  // once the saved set (if any) has been looked for; nothing is written before that, or an empty page would erase it.
+  const savedKey = playback.local ? `local:${item.id}` : itemKey(item), [restored, setRestored] = useState(false), [saved, setSaved] = useState(false), savedJson = useRef('');
+  const shiftRef = useRef(shift); shiftRef.current = shift;
   // `route` is how the title is played right now: the plain file, or the converter with a chosen dub.
   const [route, setRoute] = useState(playback), routeRef = useRef(route), [info, setInfo] = useState<MediaTracks | null>(null), infoRef = useRef(info);
   const settledDub = useRef(false), resumed = useRef(false), natives = useRef<Array<{ id: string; language: string }>>(), nativeWanted = useRef<MediaTrack>();
@@ -105,46 +118,60 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
     if (current.remux.audio === track.order) return;
     if (playable) plain(track); else convert(track);
   };
-  // The control bar covers the bottom of the picture (always in the window, until it fades in full
-  // screen), so the text sits higher in the window. Percent of the picture height, to the text's bottom edge.
-  const placeCue = (cue: VTTCue, lifted: boolean) => { cue.snapToLines = false; cue.lineAlign = 'end'; cue.line = lifted ? 74 : 90; };
-  const place = (track: TextTrack, lifted: boolean) => Array.from(track.cues || []).forEach(cue => placeCue(cue as VTTCue, lifted));
+  // The control bar covers the bottom of the picture (always in the window, until it fades in full screen), so the main
+  // text sits higher in the window. Percent of the picture height, to the text's bottom edge. The second subtitle hangs
+  // from the top instead, so it never lands on the main one however many lines either has; in the window it sits under
+  // the title bar.
+  const placeCue = (cue: VTTCue, slot: Slot, lifted: boolean) => { cue.snapToLines = false; if (slot === 'main') { cue.lineAlign = 'end'; cue.line = lifted ? 74 : 90; } else { cue.lineAlign = 'start'; cue.line = lifted ? 16 : 6; } };
   const fullRef = useRef(full); fullRef.current = full;
-  useEffect(() => { for (const track of [external.current, embedded.current]) if (track && track.mode !== 'disabled') place(track, !full); }, [full]);
-  const showSubtitle = (choice: Choice) => { if (external.current) external.current.mode = choice === 'file' ? 'showing' : 'hidden'; if (embedded.current) embedded.current.mode = typeof choice === 'number' ? 'showing' : 'hidden'; setShown(choice); };
-  // A subtitle inside the file: its lines arrive as the file is read, so they are fetched now and then
-  // while it is on. Lines for a part not read yet (far ahead of a seek) appear once playback gets there.
-  useEffect(() => {
-    if (typeof shown !== 'number') return;
-    const track = embedded.current ??= video.current!.addTextTrack('subtitles', 'Gömülü altyazı');
-    if (embeddedOf.current?.id !== shown) { track.mode = 'hidden'; Array.from(track.cues || []).reverse().forEach(cue => track.removeCue(cue)); embeddedOf.current = { id: shown, next: 0 }; }
-    track.mode = 'showing';
-    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
-    const pull = async () => {
-      const state = embeddedOf.current!;
-      try {
-        const batch = await platform.call<CueBatch>('subtitleCues', { url: playback.url, track: state.id, since: state.next });
-        if (!alive || embeddedOf.current !== state) return;
-        for (const line of batch.cues) { const cue = new VTTCue(line.start, line.end, line.text); placeCue(cue, !fullRef.current); track.addCue(cue); }
-        state.next = batch.next;
-        timer = setTimeout(() => void pull(), batch.cues.length >= 2000 ? 50 : 1500);
-      } catch { if (alive) timer = setTimeout(() => void pull(), 3000); }
-    };
-    void pull();
-    return () => { alive = false; clearTimeout(timer); };
-  }, [shown]);
-  // A subtitle file, picked from disk or found on the internet, becomes the track the viewer sees.
+  useEffect(() => { for (const slot of SLOTS) for (const cue of Array.from(slotTracks.current[slot]?.cues || [])) placeCue(cue as VTTCue, slot, !full); }, [full]);
+  // What a slot shows. A file's lines are all there at once; a subtitle inside the film arrives as the film is read, so
+  // it is fetched now and then while it is on, and lines for a part not read yet (far ahead of a seek) appear once
+  // playback gets there.
+  function useSlot(slot: Slot, pick: Pick) {
+    const key = pick === 'off' ? 'off' : 'file' in pick ? `f${pick.file}:${files.find(f => f.id === pick.file)?.v}` : `t${pick.track}`;
+    useEffect(() => {
+      const existing = slotTracks.current[slot];
+      if (pick === 'off') { if (existing) existing.mode = 'hidden'; return; }
+      // A track with no mode has no cue list, so it is hidden before its cues are replaced.
+      const track = slotTracks.current[slot] ??= video.current!.addTextTrack('subtitles', slot === 'main' ? 'Altyazı' : 'İkinci altyazı');
+      track.mode = 'hidden'; Array.from(track.cues || []).reverse().forEach(cue => track.removeCue(cue));
+      if ('file' in pick) {
+        for (const line of fileCues.current.get(pick.file) || []) { const by = shiftRef.current[slot], cue = new VTTCue(Math.max(0, line.start + by), Math.max(0.1, line.end + by), line.text); placeCue(cue, slot, !fullRef.current); track.addCue(cue); }
+        track.mode = 'showing'; return;
+      }
+      track.mode = 'showing';
+      let alive = true, next = 0, timer: ReturnType<typeof setTimeout> | undefined;
+      const pull = async () => {
+        try {
+          const batch = await platform.call<CueBatch>('subtitleCues', { url: playback.url, track: pick.track, since: next });
+          if (!alive) return;
+          for (const line of batch.cues) { const cue = new VTTCue(line.start, line.end, line.text); placeCue(cue, slot, !fullRef.current); track.addCue(cue); }
+          next = batch.next;
+          timer = setTimeout(() => void pull(), batch.cues.length >= 2000 ? 50 : 1500);
+        } catch { if (alive) timer = setTimeout(() => void pull(), 3000); }
+      };
+      void pull();
+      return () => { alive = false; clearTimeout(timer); };
+    }, [key]);
+  }
+  useSlot('main', picks.main); useSlot('second', picks.second);
+  const choose = (slot: Slot, pick: Pick) => { setPicks(current => ({ ...current, [slot]: pick })); setShift(current => ({ ...current, [slot]: 0 })); setCaution(''); };
+  // A subtitle file, picked from disk or found on the internet, goes to the slot the viewer is loading into. A file with
+  // the same name replaces the earlier one; the same subtitle is never shown in both slots.
   function applySubtitle(name: string, bytes: Uint8Array) {
     setNotice(''); setCaution('');
     try {
       if (bytes.length > MAX_SUBTITLE_BYTES) throw new Error('Dosya çok büyük. Bir altyazı dosyası seçin.');
-      const cues = parseSubtitles(decodeSubtitles(bytes));
+      const decoded = decodeSubtitles(bytes), cues = parseSubtitles(decoded);
       if (!cues.length) throw new Error('Dosyada altyazı bulunamadı. .srt veya .vtt dosyası seçin.');
-      const v = video.current!, track = external.current ??= v.addTextTrack('subtitles', 'Altyazı');
-      // A track with no mode has no cue list, and a new file replaces the old one's cues.
-      track.mode = 'hidden'; Array.from(track.cues || []).reverse().forEach(cue => track.removeCue(cue));
-      cues.forEach(cue => track.addCue(new VTTCue(cue.start, cue.end, cue.text)));
-      place(track, !full); setFile(name); setShift(0); showSubtitle('file');
+      const known = fileIds.current.get(name), id = known ?? nextFile.current++;
+      fileIds.current.set(name, id); fileCues.current.set(id, cues); fileText.current.set(id, decoded);
+      setFiles(list => known === undefined ? [...list, { id, name, v: 0 }].slice(-8) : list.map(f => f.id === id ? { ...f, v: f.v + 1 } : f));
+      const slot = target, other: Slot = slot === 'main' ? 'second' : 'main';
+      setPicks(current => ({ ...current, [slot]: { file: id }, ...(same(current[other], { file: id }) ? { [other]: 'off' as Pick } : {}) }));
+      setShift({ main: 0, second: 0 });
+      const v = video.current!;
       setCaution(fitNote(Math.max(...cues.map(cue => cue.end)), infoRef.current?.duration || (Number.isFinite(v.duration) ? v.duration : 0)));
       return true;
     } catch (e) { setNotice((e as Error).message || 'Altyazı dosyası okunamadı.'); return false; }
@@ -155,7 +182,46 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
     catch (e) { setNotice((e as Error).message || 'Altyazı dosyası okunamadı.'); }
   }
   // A subtitle timed a little early or late: every line moves together. Plus makes the lines come later.
-  const nudge = (delta: number) => { const track = external.current; if (!track) return; Array.from(track.cues || []).forEach(cue => { cue.startTime = Math.max(0, cue.startTime + delta); cue.endTime = Math.max(cue.startTime + 0.1, cue.endTime + delta); }); setShift(value => Math.round((value + delta) * 10) / 10); };
+  const nudge = (slot: Slot, delta: number) => { const track = slotTracks.current[slot]; if (!track) return; Array.from(track.cues || []).forEach(cue => { cue.startTime = Math.max(0, cue.startTime + delta); cue.endTime = Math.max(cue.startTime + 0.1, cue.endTime + delta); }); setShift(current => ({ ...current, [slot]: Math.round((current[slot] + delta) * 10) / 10 })); };
+  // Looks for what was saved for this title, once, as it opens. A film, an episode or a download; never a live channel.
+  useEffect(() => {
+    if (playback.live || platform.type !== 'mac') { setRestored(true); return; }
+    let alive = true;
+    platform.call<SavedSubtitles | null>('savedSubtitles', { key: savedKey }).then(set => {
+      if (!alive) return;
+      if (set) {
+        const list: Array<{ id: number; name: string; v: number }> = [];
+        for (const f of set.files) { const cues = parseSubtitles(f.text); if (!cues.length) continue; const id = nextFile.current++; fileIds.current.set(f.name, id); fileCues.current.set(id, cues); fileText.current.set(id, f.text); list.push({ id, name: f.name, v: 0 }); }
+        const back = (p: SavedPick): Pick => p === 'off' ? 'off' : 'track' in p ? { track: p.track } : list.find(f => f.name === p.file) ? { file: list.find(f => f.name === p.file)!.id } : 'off';
+        shiftRef.current = set.shift; setShift(set.shift); setFiles(list); setPicks({ main: back(set.main), second: back(set.second) }); setSecondOpen(set.second !== 'off'); setSaved(true);
+        savedJson.current = JSON.stringify({ files: set.files.filter(f => list.some(l => l.name === f.name)), main: set.main, second: set.second, shift: set.shift });
+      }
+      setRestored(true);
+    }, () => { if (alive) setRestored(true); });
+    return () => { alive = false; };
+  }, []);
+  // A subtitle inside the film that this file does not have (a saved number from another cut) is dropped.
+  useEffect(() => {
+    if (!restored || !info) return;
+    const ok = new Set(info.tracks.filter(t => t.kind === 'subtitle' && t.text).map(t => t.id));
+    setPicks(current => { const next = { ...current }; let changed = false; for (const slot of SLOTS) { const p = current[slot]; if (typeof p === 'object' && 'track' in p && !ok.has(p.track)) { next[slot] = 'off'; changed = true; } } return changed ? next : current; });
+  }, [info, restored]);
+  // Every change to the set is written a moment later, so setting subtitles up once is enough. An emptied set removes the saved one.
+  useEffect(() => {
+    if (!restored || playback.live || platform.type !== 'mac') return;
+    const empty = !files.length && picks.main === 'off' && picks.second === 'off';
+    const named = (p: Pick): SavedPick => p === 'off' ? 'off' : 'track' in p ? { track: p.track } : { file: files.find(f => f.id === p.file)?.name ?? '' };
+    const state = { files: files.map(f => ({ name: f.name, text: fileText.current.get(f.id) || '' })), main: named(picks.main), second: named(picks.second), shift };
+    const json = JSON.stringify(state);
+    if (json === savedJson.current || (empty && !savedJson.current)) return;
+    const timer = setTimeout(() => {
+      if (empty) { savedJson.current = ''; setSaved(false); void platform.call('forgetSubtitles', { key: savedKey }).catch(() => {}); return; }
+      void platform.call('saveSubtitles', { key: savedKey, state }).then(() => { savedJson.current = json; setSaved(true); }, () => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [restored, files, picks, shift]);
+  // Back to nothing for this title: no subtitles on, no files kept, nothing saved.
+  const resetSubtitles = () => { setFiles([]); setPicks({ main: 'off', second: 'off' }); setShift({ main: 0, second: 0 }); setSecondOpen(false); setTarget('main'); setCaution(''); setNotice(''); fileIds.current.clear(); fileCues.current.clear(); fileText.current.clear(); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('[role="dialog"]')) return;
@@ -174,7 +240,9 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
     return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('visibilitychange', visibility); document.removeEventListener('fullscreenchange', fullChanged); };
   }, [full, preferences, playback]);
   useEffect(() => { if (!full && document.fullscreenElement) void document.exitFullscreen().catch(() => {}); if (full) { container.current?.focus(); reveal(); } }, [full]);
+  const subtitleSize = preferences.subtitleSize ?? SUBTITLE_SIZE.normal, subtitleFont = isSubtitleFont(preferences.subtitleFont) ? preferences.subtitleFont : 'system';
   return <div className={`player ${full ? 'player-full' : ''} ${controls || statsVisible || menu || !full || paused || error ? 'show-controls' : ''}`} ref={container} tabIndex={-1} onMouseMove={reveal} onClick={reveal}>
+    <style>{`.player video::cue{font-size:${subtitleSize}%;font-family:${SUBTITLE_FONTS[subtitleFont].stack}}`}</style>
     <video ref={video} autoPlay playsInline onDoubleClick={fullscreen} onLoadStart={() => { if (!started.current) { setLoading(true); setBuffering(false); } }} onWaiting={() => { const t = timings.current; if (started.current && !t.bufferingStartedAt) { t.stalls++; t.bufferingStartedAt = performance.now(); } if (!started.current) { setLoading(true); setBuffering(true); } else { clearTimeout(waitTimer.current); waitTimer.current = setTimeout(() => { setLoading(true); setBuffering(true); }, 800); clearTimeout(stallTimer.current); stallTimer.current = setTimeout(() => { if (!video.current?.paused) report('Yayın kesildi ve geri gelmedi. Yeniden deneyin veya Ayarlar’dan başka bir canlı yayın biçimi seçin.'); }, 20000); } }} onPlaying={() => { const t = timings.current, now = performance.now(); if (t.firstFrameAt === undefined) t.firstFrameAt = now; if (t.bufferingStartedAt) { t.bufferingMs += now - t.bufferingStartedAt; t.bufferingStartedAt = undefined; } settled(); setLoading(false); setBuffering(false); setError(''); setPaused(false); if (!started.current) { started.current = true; startedCallback.current(); callback.current(playback.live ? 0 : video.current?.currentTime || 0); } }} onPause={() => setPaused(true)} onCanPlay={() => { settled(); setLoading(false); }} onEnded={() => { setPaused(true); callback.current(0); }} onError={() => { clearTimeout(errorTimer.current); errorTimer.current = setTimeout(() => { setLoading(false); setError('Video açılamadı. Sunucu erişimini ve cihazın codec desteğini kontrol edin.'); }, 3000); }} onTimeUpdate={() => { if (playback.live) return; const v = video.current!, now = Date.now(); if (now - positionAt.current > 500) { positionAt.current = now; setPosition(v.currentTime); setDuration(Number.isFinite(v.duration) ? v.duration : 0); setSeekable(v.seekable.length > 0); } if (v.currentTime > 0 && now - progressAt.current > 30000) { progressAt.current = now; callback.current(v.currentTime); } }} />
     <div className="player-top"><div><span className={`pill ${playback.live ? 'live-pill' : ''}`}>{playback.live ? '● CANLI' : 'İZLENİYOR'}</span><strong>{item.name}</strong></div><button className="icon-button" aria-label="Oynatıcıyı kapat" onClick={onClose}><Icon name="close" /></button></div>
     {loading && !error && <div className="player-status" role="status"><div className="spinner" /><span>{buffering ? 'Yayın tamponlanıyor…' : 'Yayın yükleniyor…'}</span></div>}
@@ -189,6 +257,16 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
       const playable = (t: MediaTrack) => nativeIndex(t, known) >= 0;
       const on = (t: MediaTrack) => { if (route.remux) return route.remux.audio === t.order; const n = nativeIndex(t, native); return n >= 0 && native[n].enabled; };
       const converted = listed.some(t => !playable(t));
+      const showSecond = secondOpen || picks.second !== 'off';
+      const radios = (slot: Slot) => {
+        const pick = picks[slot], blocked = (p: Pick) => same(picks[slot === 'main' ? 'second' : 'main'], p);
+        return <div role="radiogroup" aria-label={slot === 'main' ? 'Altyazı' : 'İkinci altyazı'}>
+          <button role="radio" aria-checked={pick === 'off'} className="track-option" onClick={() => choose(slot, 'off')}>Kapalı</button>
+          {subs.map((t, i) => <button key={t.id} role="radio" aria-checked={same(pick, { track: t.id })} className="track-option" disabled={!t.text || blocked({ track: t.id })} title={subNames[i]} onClick={() => choose(slot, { track: t.id })}>{subNames[i]}</button>)}
+          {files.map(f => <button key={f.id} role="radio" aria-checked={same(pick, { file: f.id })} className="track-option" disabled={blocked({ file: f.id })} title={f.name} onClick={() => choose(slot, { file: f.id })}>{f.name}</button>)}
+        </div>;
+      };
+      const shiftRow = (slot: Slot) => typeof picks[slot] === 'object' && 'file' in (picks[slot] as object) ? <div className="track-shift" role="group" aria-label={slot === 'main' ? 'Altyazı zamanlaması' : 'İkinci altyazı zamanlaması'}><span>Zamanlama</span><button aria-label={slot === 'main' ? 'Altyazıyı 0,5 saniye öne al' : 'Üst altyazı: 0,5 saniye öne al'} onClick={() => nudge(slot, -0.5)}>−0,5 sn</button><output>{shift[slot] > 0 ? '+' : ''}{shift[slot].toFixed(1).replace('.', ',')} sn</output><button aria-label={slot === 'main' ? 'Altyazıyı 0,5 saniye geciktir' : 'Üst altyazı: 0,5 saniye geciktir'} onClick={() => nudge(slot, 0.5)}>+0,5 sn</button></div> : null;
       return <div className="track-menu" role="group" aria-label="Ses ve altyazı">
         <section>
           <strong>Ses</strong>
@@ -200,13 +278,20 @@ export function Player({ platform, item, playback, preferences, resumeAt, full, 
         </section>
         <section>
           <strong>Altyazı</strong>
-          <div role="radiogroup" aria-label="Altyazı">
-            <button role="radio" aria-checked={shown === 'off'} className="track-option" onClick={() => showSubtitle('off')}>Kapalı</button>
-            {subs.map((t, i) => <button key={t.id} role="radio" aria-checked={shown === t.id} className="track-option" disabled={!t.text} title={subNames[i]} onClick={() => showSubtitle(t.id)}>{subNames[i]}</button>)}
-            {file && <button role="radio" aria-checked={shown === 'file'} className="track-option" onClick={() => showSubtitle('file')}>{file}</button>}
-          </div>
-          {shown === 'file' && <div className="track-shift" role="group" aria-label="Altyazı zamanlaması"><span>Zamanlama</span><button aria-label="Altyazıyı 0,5 saniye öne al" onClick={() => nudge(-0.5)}>−0,5 sn</button><output>{shift > 0 ? '+' : ''}{shift.toFixed(1).replace('.', ',')} sn</output><button aria-label="Altyazıyı 0,5 saniye geciktir" onClick={() => nudge(0.5)}>+0,5 sn</button></div>}
-          {caution && shown === 'file' && <small className="subtitle-note" role="status">{caution}</small>}
+          {radios('main')}
+          {shiftRow('main')}
+          {caution && <small className="subtitle-note" role="status">{caution}</small>}
+          {showSecond && <div className="second-subtitle">
+            <strong>İkinci altyazı <small>(görüntünün üstünde)</small></strong>
+            {radios('second')}
+            {shiftRow('second')}
+            <button className="track-load" onClick={() => { choose('second', 'off'); setSecondOpen(false); setTarget('main'); }}>İkinci altyazıyı kaldır</button>
+            <div className="track-shift" role="radiogroup" aria-label="Yeni altyazının yeri"><span>Yüklenen altyazı</span>{SLOTS.map(slot => <button key={slot} role="radio" aria-checked={target === slot} className="track-option" onClick={() => setTarget(slot)}>{slot === 'main' ? 'Ana' : 'İkinci'}</button>)}</div>
+          </div>}
+          {!showSecond && <button className="track-load" onClick={() => { setSecondOpen(true); setTarget('second'); }}>İkinci altyazı ekle (dil öğrenmek için)</button>}
+          <div className="track-shift" role="group" aria-label="Altyazı yazısı"><span>Yazı boyutu</span><button aria-label="Altyazı yazısını küçült" disabled={subtitleSize <= SUBTITLE_SIZE.min} onClick={() => onPreference({ subtitleSize: clampSubtitleSize(subtitleSize - SUBTITLE_SIZE.step) })}>A−</button><output>%{subtitleSize}</output><button aria-label="Altyazı yazısını büyüt" disabled={subtitleSize >= SUBTITLE_SIZE.max} onClick={() => onPreference({ subtitleSize: clampSubtitleSize(subtitleSize + SUBTITLE_SIZE.step) })}>A+</button></div>
+          <label className="track-font">Yazı tipi<select aria-label="Altyazı yazı tipi" value={subtitleFont} onChange={e => onPreference({ subtitleFont: e.target.value })}>{Object.entries(SUBTITLE_FONTS).map(([key, face]) => <option key={key} value={key}>{face.label}</option>)}</select></label>
+          {saved && <small className="subtitle-saved">Bu filmin altyazı ayarları kayıtlı; bir dahaki açılışta aynen gelir. <button className="link-button" onClick={resetSubtitles}>Sıfırla</button></small>}
           <button className="track-load" onClick={() => picker.current?.click()}>Altyazı dosyası yükle…</button>
           {platform.type === 'mac' && <SubtitleSearch platform={platform} item={item} playback={playback} onStart={() => { setNotice(''); setCaution(''); }} onPick={(name, bytes) => { if (applySubtitle(name, bytes)) onMenu(false); }} />}
           <small>{subs.some(t => !t.text) ? (info?.format === 'mp4' ? 'MP4 içindeki altyazılar gösterilemez. ' : 'Resim altyazılar (PGS, VobSub) gösterilemez. ') : ''}

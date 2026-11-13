@@ -599,3 +599,36 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   alanlar eksikse o sonucu atlıyor, çökmüyor. Parmak izinin IPTV sağlayıcısı filmi yeniden
   sıkıştırdıysa eşleşmeyeceği de beklenen bir sınır. OpenSubtitles ücretsiz indirme hakkının
   büyüklüğü kaynaklarda 5 ile 200 arasında değişiyor (anahtarsız IP başına günde 5); hesap girilirse artar.
+
+## İki altyazı birden, yazı boyutu ve tipi, ayarın kaydı · 0.2.4
+
+- İstek: dil öğrenmek için iki altyazının aynı anda görünmesi; yazı boyutu ve tipinin değişmesi; bir film için
+  kurulan altyazının indirilip saklanması, her açılışta yeniden kurulmaması.
+- İki altyazı: oynatıcıda iki "yuva" (ana, ikinci) var; her birinin kendi metin izi ve kaynağı (kapalı, yüklenen
+  veya bulunan dosya, filmin içindeki altyazı) var. Ana altyazı altta (pencerede %74, tam ekranda %90 çizgisinde,
+  alt kenara hizalı); ikincisi üstten sarkıyor (pencerede %16, tam ekranda %6; üst kenara hizalı), bu yüzden iki
+  altyazı kaç satır olursa olsun üst üste binmiyor. Aynı altyazı iki yuvada birden seçilemiyor. Her yuvanın kendi
+  zaman kaydırması var. Yeni dosya hangi yuvaya gidecek **Ana / İkinci** anahtarıyla seçiliyor.
+- Boyut ve tip: `video::cue` kuralıyla (`font-size` yüzde, `font-family`), bütün altyazılara birden uygulanıyor;
+  Tercihlere (`subtitleSize` 50–300, `subtitleFont`) yazılıyor. Geçersiz veya varsayılan değer saklanmıyor.
+  Bir hata testte yakalandı: `in` işleci `toString` gibi adları geçerli yazı tipi sayıyordu; yalnızca kendi
+  anahtarlar (`hasOwnProperty`) geçerli.
+- Kayıt: her değişiklikten 0,8 sn sonra (`savedKey`: katalog öğesi için oynatıcının kendi anahtarı, indirilmiş
+  dosya için `local:`) altyazı dosyalarının **metni**, her yuvanın seçimi ve kaydırmalar `subtitle-saves/`
+  altına, hesap + film anahtarının karmasıyla adlandırılmış küçük bir JSON dosyasına yazılıyor. Adres veya hesap
+  yazılmıyor. Dosya sayfadan ve diskten her geçişte `cleanSaved` ile süzülüyor (en çok 8 dosya, dosya başına
+  2 MB, toplam 8 MB, geçersiz seçim kapalıya düşer, kaydırma ±1 saat). Boşalan küme kaydı siliyor. Filmin
+  içindeki bir altyazı iz numarasıyla hatırlanıyor, dosyada o iz yoksa kapatılıyor. "Hesabı cihazdan sil" hepsini siliyor.
+- Birim testleri (`tests/subtitles.test.ts`, 10 test): kayıt süzgeci (boş ad, aynı ad, büyük dosya, olmayan
+  dosyaya seçim, ±1 saat, aynı altyazı iki yuvada, 8 dosya sınırı, anahtar deseni); raf (hesap ve film başına
+  ayrı, dosya adında film/hesap yok, silme, hepsini silme, bozuk dosya "yok" sayılır); tercih normalleştirme.
+- `npm run test:tracks` gerçek pencerede: iki dosya iki yuvada aynı anda görünüyor (`line` 74 ve 16, `lineAlign`
+  `end` ve `start`); ikincisinin kaydırması ötekini etkilemiyor; yazı boyutu %100'den %200'e çıkınca altyazıların
+  kapladığı piksel satırı yaklaşık iki katına çıkıyor (19 → 35, aynı duran karenin altyazılı ve altyazısız
+  ekran görüntüleri karşılaştırılarak ölçüldü); ayar diske yazılıyor (metin var, adres yok); aynı film yeniden
+  açılınca ve yeni pencerede iki altyazı da, kaydırma da geri geliyor; başka bir bölüm bunları devralmıyor;
+  boyut ve tip kütüphanede. `npm run test:embedded`: filmin içindeki iki altyazı (İngilizce altta, Türkçe üstte)
+  aynı anda, doğru anda, dönüşüm sürerken çıkıyor.
+- **Doğrulanmadı:** tam ekranda (%90 ve %6) görünüm elle bakılmadı, yalnızca değerler sınandı. Pencerede %200
+  yazı küçük oynatıcıda alt altyazıyı denetim çubuğuna yaklaştırıyor. Üst altyazı pencerede başlık çubuğunun
+  hemen altında; başlık çubuğu görünürken çok uzun bir üst altyazı onunla örtüşebilir.

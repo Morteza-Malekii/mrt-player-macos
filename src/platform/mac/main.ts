@@ -11,6 +11,7 @@ import { Remuxer } from './remux';
 import { ImageGateway } from './images';
 import { DownloadManager } from './downloads';
 import { RecordingManager } from './recordings';
+import { SubtitleShelf } from './shelf';
 import { SubtitleService, sourceOpener, type StoredKeys, type SubtitleKeyStore } from './subtitles';
 import type { Action, Credentials } from '../../core/models';
 
@@ -74,7 +75,7 @@ app.whenReady().then(async () => {
   const stopMedia = () => { remuxer?.stop(); gateway.clear(); inspector.clear(); };
   const tracks = { tracks: inspector.tracks, cues: inspector.cues };
   const subtitles = new SubtitleService(new MacSubtitleKeys(path.join(data, 'subtitle-keys.enc')), sourceOpener({ serve: (token, range, signal) => gateway.serve(token, 'GET', range, signal, false), localFile: downloads.file }));
-  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', media, stopMedia, gateway.stats, gateway.useLimit, downloads, recordings, tracks, subtitles);
+  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', media, stopMedia, gateway.stats, gateway.useLimit, downloads, recordings, tracks, subtitles, new SubtitleShelf(path.join(data, 'subtitle-saves')));
   const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: kiyi:; media-src kiyi: blob:; connect-src kiyi:; worker-src blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
   protocol.handle('kiyi', async request => {
     const url = new URL(request.url);

@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { AppError, id, object, publicError, text } from '../core/errors';
 import { imageUrl, normalizeCredentials, parseKind, Xtream } from '../core/xtream';
 import { normalizeLibrary } from '../core/library';
-import type { Account, Action, Credentials, CueBatch, Download, Item, Library, Login, MediaTracks, Playback, Recording, Reply, Status, SubtitleFile, SubtitleKeys, SubtitleKeyValues, SubtitleQuery, SubtitleSearchResult } from '../core/models';
-import { describeName } from '../core/subtitles';
+import type { Account, Action, Credentials, CueBatch, Download, Item, Library, Login, MediaTracks, Playback, Recording, Reply, Status, SavedSubtitles, SubtitleFile, SubtitleKeys, SubtitleKeyValues, SubtitleQuery, SubtitleSearchResult } from '../core/models';
+import { SAVED_KEY, cleanSaved, describeName } from '../core/subtitles';
 import { NodeTransport } from './http';
 export interface Vault { exists(): Promise<boolean>; save(credentials: Credentials, passphrase?: string): Promise<void>; load(passphrase?: string): Promise<Credentials>; clear(): Promise<void> }
 // `readIcons`/`writeIcons` keep the poster addresses of favourites and history in a file the
@@ -20,6 +20,8 @@ export interface RecordingHost { start(streamId: string, channel: string, minute
 export interface TrackHost { tracks(url: string): MediaTracks | null; cues(url: string, track: number, since: number): CueBatch }
 // Subtitles from the internet. The page names the film it is playing; the keys, the services and the links stay behind this.
 export interface SubtitleHost { configured(): Promise<SubtitleKeys>; save(values: SubtitleKeyValues): Promise<SubtitleKeys>; search(query: SubtitleQuery): Promise<SubtitleSearchResult>; get(id: string): Promise<SubtitleFile> }
+// A film's saved subtitle set, kept per account (platform/mac/shelf.ts).
+export interface SubtitleShelfHost { read(profile: string, key: string): Promise<SavedSubtitles | null>; write(profile: string, key: string, saved: SavedSubtitles): Promise<void>; delete(profile: string, key: string): Promise<void>; clear(): Promise<void> }
 const count = (value: unknown, max: number) => { const n = Math.floor(Number(value)); return Number.isFinite(n) && n >= 0 ? Math.min(n, max) : 0; };
 export class Session {
   private client?: Xtream;
@@ -35,7 +37,7 @@ export class Session {
   // is ever contacted, whatever the page asks for) and no poster address is kept on disk.
   private posters = false;
   posterUrl = (kind: string, id: string): string | undefined => this.account && this.posters ? this.icons.get(`${kind}:${id}`) : undefined;
-  constructor(private vault: Vault, private store: LibraryStore, private platform: Status['platform'], private media: (url: string, file?: boolean) => string = u => u, private clearMedia: () => void = () => {}, private mediaStats: () => unknown = () => null, private mediaLimit: (max: number) => void = () => {}, private downloads?: DownloadHost, private recordings?: RecordingHost, private inspect?: TrackHost, private subtitles?: SubtitleHost) {}
+  constructor(private vault: Vault, private store: LibraryStore, private platform: Status['platform'], private media: (url: string, file?: boolean) => string = u => u, private clearMedia: () => void = () => {}, private mediaStats: () => unknown = () => null, private mediaLimit: (max: number) => void = () => {}, private downloads?: DownloadHost, private recordings?: RecordingHost, private inspect?: TrackHost, private subtitles?: SubtitleHost, private shelf?: SubtitleShelfHost) {}
   async call(action: Action, payload?: unknown): Promise<Reply> {
     try { return { ok: true, data: await this.dispatch(action, object(payload)) }; }
     catch (error) { return { ok: false, error: publicError(error) }; }
@@ -113,7 +115,7 @@ export class Session {
     if (action === 'status') return { saved: await this.vault.exists(), requiresPassphrase: this.platform === 'tv', platform: this.platform };
     if (action === 'login') return this.login(p as Login);
     if (action === 'unlock') { const credentials = await this.vault.load(text(p.passphrase, 512)); return this.login({ ...credentials, allowHttp: true, remember: false }, true); }
-    if (action === 'logout') { ++this.revision; this.client = undefined; this.account = undefined; this.clearMedia(); this.recordings?.bind('', undefined); this.downloads?.clear(); this.icons.clear(); this.iconsSaved = ''; this.posters = false; if (p.forget === true) { await this.vault.clear(); await this.store.clear(); } return null; }
+    if (action === 'logout') { ++this.revision; this.client = undefined; this.account = undefined; this.clearMedia(); this.recordings?.bind('', undefined); this.downloads?.clear(); this.icons.clear(); this.iconsSaved = ''; this.posters = false; if (p.forget === true) { await this.vault.clear(); await this.store.clear(); await this.shelf?.clear(); } return null; }
     if (!this.client || !this.account) throw new AppError('LOCKED', 'Oturum kilitlendi. Lütfen tekrar giriş yapın.');
     const client = this.client;
     switch (action) {
@@ -139,6 +141,9 @@ export class Session {
       case 'subtitleCues': return this.inspect?.cues(text(p.url, 300), count(p.track, 1 << 30), count(p.since, 1 << 30)) ?? { cues: [], next: 0 };
       case 'subtitleKeys': return this.subs().configured();
       case 'saveSubtitleKeys': return this.subs().save({ opensubtitlesKey: p.opensubtitlesKey, opensubtitlesUser: p.opensubtitlesUser, opensubtitlesPassword: p.opensubtitlesPassword, subdlKey: p.subdlKey });
+      case 'savedSubtitles': return this.shelf && SAVED_KEY.test(text(p.key, 80)) ? this.shelf.read(this.account.profile, text(p.key, 80)) : null;
+      case 'saveSubtitles': { const key = text(p.key, 80), saved = cleanSaved(p.state); if (!SAVED_KEY.test(key) || !saved) throw new AppError('INVALID', 'Altyazı ayarı geçersiz.'); await this.shelf?.write(this.account.profile, key, saved); return null; }
+      case 'forgetSubtitles': { const key = text(p.key, 80); if (SAVED_KEY.test(key)) await this.shelf?.delete(this.account.profile, key); return null; }
       case 'subtitleSearch': return this.subs().search(await this.subtitleQuery(client, p));
       case 'subtitleGet': return this.subs().get(text(p.id, 40));
       case 'download': { const host = this.host(), url = this.fileUrl(client, p); return host.start(url, text(p.name, 200).trim() || 'İsimsiz', /\.([a-z0-9]{1,6})$/.exec(url)?.[1] || 'mp4', `${parseKind(p.kind)}:${text(p.id, 20)}`); }

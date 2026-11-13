@@ -2,7 +2,7 @@
 
 A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-![Version](https://img.shields.io/badge/version-0.2.3-blue)
+![Version](https://img.shields.io/badge/version-0.2.4-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
@@ -121,6 +121,9 @@ For a movie or episode, open **Ses ve altyazı** (Audio and subtitles) in the pl
 - Choose a subtitle inside the file (Matroska text subtitles: SRT, ASS/SSA, WebVTT). Its lines are read from the same bytes the player downloads, so they appear as the film is loaded.
 - Load a local `.srt` or `.vtt` file. Supported text encodings include UTF-8, UTF-16 with a BOM, Turkish Windows-1254, and Persian Windows-1256; legacy encoding detection is heuristic.
 - Select **İnternette altyazı ara** (Search subtitles on the internet) when the file has none. The app asks OpenSubtitles and SubDL for English, Persian and Turkish subtitles and lists them in that order. A subtitle that OpenSubtitles recorded for exactly this file (matched by the file's fingerprint) is marked **Bu dosyaya uygun** and listed first in its language; the rest are ordered by how closely their release name matches. Picking one downloads it and shows it like a local file. It needs a free API key from either service, entered once under **Ayarlar → Altyazı arama**.
+- Show **two subtitles at once** (for learning a language) with **İkinci altyazı ekle**: the main subtitle stays at the bottom and the second hangs from the top of the picture, so they never overlap. Each slot takes a subtitle inside the file, a file you load, or one found on the internet (the **Ana / İkinci** switch says which slot a new file goes to), and the same subtitle cannot be in both.
+- Change the **size** (50 % to 300 %) and the **font** (Varsayılan, Helvetica, Georgia, Menlo) of the subtitle text with the controls in the same menu; it applies to every subtitle and is remembered.
+- What you set up for a film or episode (the subtitle files themselves, which one each slot shows, and the timing shifts) is saved on your Mac automatically a moment after each change and comes back the next time that title plays, so nothing is downloaded or set again. **Sıfırla** next to the saved note removes it for that title.
 - Shift a loaded subtitle with the **−0,5 sn / +0,5 sn** buttons when it runs early or late. A subtitle that ends well after the film does is flagged as probably made for another cut.
 - Select **Kapalı** (Off) to hide subtitles.
 
@@ -148,6 +151,7 @@ MRT-Player runs locally and does not require a hosted MRT-Player backend.
 - **Local library:** favorites, recent items, preferences, and list configuration are stored in the application's local data directory. These library records are not encrypted as a whole.
 - **Renderer isolation:** account-bearing media URLs remain in the main process; playback uses opaque `kiyi://media/...` addresses. Optional artwork uses `kiyi://image/...` addresses.
 - **Artwork off by default:** enabling posters/logos contacts the image URLs supplied by the provider. These may point to third-party CDNs or image services, which receive your image requests and IP address.
+- **Saved subtitles:** the text of subtitle files you loaded or found, your choices and timing shifts are kept per account and title in small files under the app's data folder (`subtitle-saves`), named by a hash. No stream address is stored. "Hesabı cihazdan sil" removes them all.
 - **Subtitle search:** only when you press the search button, the title, year, film-database numbers and a fingerprint of the file (a number computed from its size and first and last 64 KB) are sent to OpenSubtitles and SubDL, which also see your IP address. The IPTV address and account are never sent. The services' keys are encrypted with `safeStorage` and never reach the renderer.
 - **Network requests:** provider API calls, media requests and redirects, optional provider-supplied artwork, and the subtitle search above. The app has no telemetry, analytics, remote error reporting, or application log files.
 - **Desktop boundary:** the renderer is sandboxed, uses context isolation, has no Node integration, and calls a restricted preload bridge. A Content Security Policy restricts resource loading.

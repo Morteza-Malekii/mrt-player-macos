@@ -1,7 +1,7 @@
 // Subtitles from the internet: which languages, in what order, and how a list of finds is ranked. Pure
 // functions only (no network, no 64-bit numbers) so they can be tested without a service. The services
 // themselves are in platform/mac/subtitles.ts.
-import type { SubtitleHit, SubtitleLanguage } from './models';
+import type { SavedPick, SavedSubtitles, SubtitleHit, SubtitleLanguage } from './models';
 
 // The viewer's order of preference: English first, then Persian, then Turkish.
 export const SUBTITLE_LANGUAGES: SubtitleLanguage[] = ['en', 'fa', 'tr'];
@@ -62,3 +62,48 @@ export function fitNote(lastEnd: number, duration: number): string {
   if (lastEnd < duration * 0.5) return 'Bu altyazı filmin yalnızca ilk yarısını kapsıyor olabilir.';
   return '';
 }
+
+// How the subtitle text looks. One size and one face for every subtitle on screen; the size is a percent of the
+// player's usual one and moves in steps of 10.
+export const SUBTITLE_FONTS: Record<string, { label: string; stack: string }> = {
+  system: { label: 'Varsayılan', stack: 'system-ui, -apple-system, sans-serif' },
+  helvetica: { label: 'Helvetica', stack: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+  serif: { label: 'Georgia (serif)', stack: 'Georgia, "Times New Roman", serif' },
+  mono: { label: 'Menlo (sabit genişlik)', stack: 'Menlo, Monaco, monospace' }
+};
+// Own keys only: a name like `toString` is not a font.
+export const isSubtitleFont = (key: unknown): key is string => typeof key === 'string' && Object.prototype.hasOwnProperty.call(SUBTITLE_FONTS, key);
+export const SUBTITLE_SIZE = { min: 50, max: 300, step: 10, normal: 100 };
+export const clampSubtitleSize = (value: number) => Math.max(SUBTITLE_SIZE.min, Math.min(SUBTITLE_SIZE.max, Math.round(value / SUBTITLE_SIZE.step) * SUBTITLE_SIZE.step));
+
+// A film's saved subtitle set (models.ts SavedSubtitles), checked every time it crosses the bridge or is read from
+// disk: at most 8 files of at most 2 MB of text, picks that name a file that is there, shifts within an hour.
+export const MAX_SAVED_FILES = 8, MAX_SAVED_TEXT = 2 * 1024 * 1024, MAX_SAVED_TOTAL = 8 * 1024 * 1024;
+export function cleanSaved(input: unknown): SavedSubtitles | null {
+  if (!input || typeof input !== 'object') return null;
+  const v = input as Record<string, unknown>, files: SavedSubtitles['files'] = [], names = new Set<string>();
+  let total = 0;
+  if (!Array.isArray(v.files)) return null;
+  for (const entry of v.files.slice(0, MAX_SAVED_FILES)) {
+    const e = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+    if (typeof e.name !== 'string' || typeof e.text !== 'string' || !e.name || e.name.length > 120 || !e.text || e.text.length > MAX_SAVED_TEXT || names.has(e.name)) continue;
+    total += e.text.length; if (total > MAX_SAVED_TOTAL) break;
+    names.add(e.name); files.push({ name: e.name, text: e.text });
+  }
+  const pick = (value: unknown): SavedPick => {
+    if (value && typeof value === 'object') {
+      const p = value as Record<string, unknown>;
+      if (typeof p.file === 'string' && names.has(p.file)) return { file: p.file };
+      if (typeof p.track === 'number' && Number.isInteger(p.track) && p.track >= 0 && p.track < 1 << 30) return { track: p.track };
+    }
+    return 'off';
+  };
+  const shift = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? Math.max(-3600, Math.min(3600, Math.round(value * 10) / 10)) : 0;
+  const s = (v.shift && typeof v.shift === 'object' ? v.shift : {}) as Record<string, unknown>;
+  const result: SavedSubtitles = { files, main: pick(v.main), second: pick(v.second), shift: { main: shift(s.main), second: shift(s.second) } };
+  // The same subtitle is never in both slots.
+  if (typeof result.second === 'object' && JSON.stringify(result.second) === JSON.stringify(result.main)) result.second = 'off';
+  return result;
+}
+// The key a film or episode is saved under: the player's own key for a catalogue item, `local:` for a download.
+export const SAVED_KEY = /^(?:live|vod|series):(?:episode:)?[A-Za-z0-9-]{1,40}$|^local:[A-Za-z0-9-]{1,60}$/;

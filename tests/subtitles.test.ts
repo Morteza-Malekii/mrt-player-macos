@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { crc32, deflateRawSync } from 'node:zlib';
-import { describeName, fitNote, rankHits, releaseScore } from '../src/core/subtitles';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { SAVED_KEY, cleanSaved, clampSubtitleSize, describeName, fitNote, rankHits, releaseScore } from '../src/core/subtitles';
+import { normalizeLibrary } from '../src/core/library';
+import { SubtitleShelf } from '../src/platform/mac/shelf';
 import type { SubtitleHit } from '../src/core/models';
 import { SubtitleService, movieHash, type Source, type StoredKeys } from '../src/platform/mac/subtitles';
 import { subtitleFromZip } from '../src/platform/mac/zip';
@@ -135,4 +140,46 @@ test('without a key the search says so, one failing service does not hide the ot
     assert.deepEqual(await service.save({ opensubtitlesKey: '', subdlKey: '' }), { opensubtitles: false, opensubtitlesLogin: false, subdl: false });
     await assert.rejects(service.save({ subdlKey: 'has space' }), /geçersiz/);
   } finally { bad.server.close(); good.server.close(); }
+});
+
+test('a saved subtitle set is checked: bad files, picks that name nothing, odd shifts and doubled slots are cleaned', () => {
+  const good = { files: [{ name: 'a.srt', text: '1\n00:00:01,000 --> 00:00:02,000\nHi' }, { name: 'b.srt', text: 'x' }], main: { file: 'a.srt' }, second: { track: 3 }, shift: { main: 1.26, second: -9999 } };
+  assert.deepEqual(cleanSaved(good), { files: good.files, main: { file: 'a.srt' }, second: { track: 3 }, shift: { main: 1.3, second: -3600 } });
+  const odd = cleanSaved({ files: [{ name: '', text: 'x' }, { name: 'ok.srt', text: 'x' }, { name: 'ok.srt', text: 'again' }, { name: 'big.srt', text: 'x'.repeat(2 * 1024 * 1024 + 1) }, { name: 5, text: 'x' }, null], main: { file: 'missing.srt' }, second: { track: -1 }, shift: 'no' })!;
+  assert.deepEqual(odd.files, [{ name: 'ok.srt', text: 'x' }]);
+  assert.deepEqual([odd.main, odd.second, odd.shift], ['off', 'off', { main: 0, second: 0 }]);
+  assert.equal(cleanSaved({ files: [{ name: 'a.srt', text: 'x' }], main: { file: 'a.srt' }, second: { file: 'a.srt' } })!.second, 'off', 'never the same subtitle twice');
+  assert.equal(cleanSaved({ files: Array.from({ length: 20 }, (_, i) => ({ name: `f${i}.srt`, text: 'x' })) })!.files.length, 8);
+  for (const bad of [null, 'text', 7, {}, { files: 'x' }]) assert.equal(cleanSaved(bad), null);
+  for (const key of ['vod:123', 'series:episode:4567', 'local:ab12-cd34']) assert.ok(SAVED_KEY.test(key), key);
+  for (const key of ['../x', 'vod:', 'live:1/2', 'other:1', 'vod:123\n', '']) assert.equal(SAVED_KEY.test(key), false, key);
+});
+
+test('the shelf keeps one set per account and film, in a hashed file name, and forgets them all on request', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shelf-')), shelf = new SubtitleShelf(path.join(dir, 'saves'));
+  try {
+    const set = cleanSaved({ files: [{ name: 'a.srt', text: 'Merhaba' }], main: { file: 'a.srt' }, second: 'off', shift: { main: 0.5, second: 0 } })!;
+    assert.equal(await shelf.read('p1', 'vod:1'), null);
+    await shelf.write('p1', 'vod:1', set); await shelf.write('p2', 'vod:1', { ...set, shift: { main: 2, second: 0 } });
+    assert.deepEqual(await shelf.read('p1', 'vod:1'), set);
+    assert.equal((await shelf.read('p2', 'vod:1'))!.shift.main, 2, 'another account has its own');
+    assert.equal(await shelf.read('p1', 'vod:2'), null, 'another film has none');
+    const names = fs.readdirSync(path.join(dir, 'saves'));
+    assert.equal(names.length, 2); assert.ok(names.every(n => /^subtitles-[a-f0-9]{32}\.json$/.test(n)), 'no film or account in a file name');
+    await shelf.delete('p1', 'vod:1'); assert.equal(await shelf.read('p1', 'vod:1'), null);
+    await shelf.clear(); assert.deepEqual(fs.readdirSync(path.join(dir, 'saves')), []);
+    await shelf.clear();
+    fs.writeFileSync(path.join(dir, 'saves', `subtitles-${'0'.repeat(32)}.json`), '{ not json');
+    assert.equal(await new SubtitleShelf(path.join(dir, 'saves')).read('x', 'vod:1'), null, 'a damaged file reads as nothing');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('subtitle size and font are kept only when they are valid and not the default', () => {
+  assert.equal(clampSubtitleSize(134), 130); assert.equal(clampSubtitleSize(5), 50); assert.equal(clampSubtitleSize(999), 300);
+  assert.deepEqual(normalizeLibrary({ preferences: { subtitleSize: 160, subtitleFont: 'serif' } }).preferences, { ...normalizeLibrary({}).preferences, subtitleSize: 160, subtitleFont: 'serif' });
+  assert.equal(normalizeLibrary({ preferences: { subtitleSize: 1000 } }).preferences.subtitleSize, 300);
+  for (const preferences of [{ subtitleSize: 100, subtitleFont: 'system' }, { subtitleSize: 'big', subtitleFont: 'Comic Sans' }, { subtitleSize: NaN, subtitleFont: '__proto__' }, { subtitleFont: 'toString' }]) {
+    const out = normalizeLibrary({ preferences }).preferences;
+    assert.equal('subtitleSize' in out, false, JSON.stringify(preferences)); assert.equal('subtitleFont' in out, false, JSON.stringify(preferences));
+  }
 });

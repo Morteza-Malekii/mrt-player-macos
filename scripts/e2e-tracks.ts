@@ -10,6 +10,9 @@ import { createFixture } from './fixture';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+// Playwright's own PNG reader: the cue size is measured on screenshots (see cueRows).
+const { PNG } = createRequire(import.meta.url)('playwright-core/lib/utilsBundle') as { PNG: { sync: { read(data: Buffer): { width: number; height: number; data: Buffer } } } };
 
 const fixture = await createFixture({ dubs: true });
 const data = await mkdtemp(path.join(tmpdir(), 'mrt-tracks-'));
@@ -47,6 +50,28 @@ const playFilm = async (page: Page) => {
 const menu = (page: Page) => page.getByRole('group', { name: 'Ses ve altyazı' });
 const openMenu = async (page: Page) => { await page.getByRole('button', { name: 'Ses ve altyazı', exact: true }).click(); await expect(menu(page)).toBeVisible(); };
 const saved = (page: Page) => page.waitForTimeout(900); // preferences are saved on a short debounce
+// How many pixel rows the subtitles cover in the top half and in the bottom half of the picture, found by taking the
+// same paused frame with the subtitle tracks hidden and showing and comparing the two screenshots.
+async function cueRows(page: Page) {
+  const mode = (value: string) => page.locator('video').evaluate((v: HTMLVideoElement, m) => { Array.from(v.textTracks).forEach(t => { t.mode = m as TextTrackMode; }); }, value);
+  const shot = async (value: string) => { await mode(value); await page.waitForTimeout(300); return PNG.sync.read(await page.locator('video').screenshot()); };
+  const differ = (a: { data: Buffer }, b: { data: Buffer }, i: number) => Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.seeking && v.readyState >= 2)).toBe(true);
+    const off = await shot('hidden'), on = await shot('showing'), again = await shot('hidden');
+    // The frame itself must not have changed between the two shots without subtitles, or the difference is not the subtitles.
+    let moved = false; for (let i = 0; i < off.data.length && !moved; i += 4) moved = differ(off, again, i) > 0;
+    if (moved) continue;
+    const span = (from: number, to: number) => {
+      let first = -1, last = -1;
+      for (let y = from; y < to; y++) for (let x = 0; x < on.width; x++) if (differ(on, off, (y * on.width + x) * 4) > 60) { if (first < 0) first = y; last = y; break; }
+      return first < 0 ? 0 : last - first + 1;
+    };
+    await mode('showing');
+    return { top: span(0, off.height >> 1), bottom: span(off.height >> 1, off.height) };
+  }
+  throw new Error('the paused frame kept changing');
+}
 const cues = (page: Page) => page.locator('video').evaluate((v: HTMLVideoElement) => Array.from(v.textTracks).map(t => ({ mode: t.mode, count: t.cues ? t.cues.length : -1, active: Array.from(t.activeCues || []).map(c => (c as VTTCue).text) })));
 
 try {
@@ -116,12 +141,64 @@ try {
       await expect(menu(page).getByRole('status').filter({ hasText: '+1,0 sn' }).or(menu(page).locator('output', { hasText: '+1,0 sn' }))).toBeVisible();
       await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye öne al' }).click();
       await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye öne al' }).click();
-      await expect(menu(page).locator('output')).toHaveText('0,0 sn');
+      await expect(menu(page).getByRole('group', { name: 'Altyazı zamanlaması', exact: true }).locator('output')).toHaveText('0,0 sn');
 
       // The internet search: this profile has no key saved, so the button explains what is needed and nothing is sent out.
       await menu(page).getByRole('button', { name: 'İnternette altyazı ara' }).click();
       await expect(menu(page).getByRole('alert')).toContainText('API anahtarı');
       await expect(menu(page).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
+
+      // Two subtitles at once, for learning a language: the first stays at the bottom, the second hangs from the top.
+      await page.locator('video').evaluate((v: HTMLVideoElement) => { v.pause(); v.currentTime = 2; });
+      await menu(page).getByRole('button', { name: 'İkinci altyazı ekle (dil öğrenmek için)' }).click();
+      await page.getByLabel('Altyazı dosyası', { exact: true }).setInputFiles(srt); // it goes to the second slot
+      await openMenu(page);
+      const first = menu(page).getByRole('radiogroup', { name: 'Altyazı', exact: true }), second = menu(page).getByRole('radiogroup', { name: 'İkinci altyazı', exact: true });
+      await expect(second.getByRole('radio', { name: 'altyazi.srt' })).toBeChecked();
+      await expect(first.getByRole('radio', { name: 'eski.srt' })).toBeChecked();
+      await expect(first.getByRole('radio', { name: 'altyazi.srt' })).toBeDisabled(); // never the same subtitle twice
+      await expect.poll(async () => (await cues(page)).map(t => [t.mode, t.active])).toEqual([['showing', ['Çok güzel bir gün, öğrenci şimdi geldi.']], ['showing', ['Merhaba dünya']]]);
+      // Where they sit: the main one low (74 in the window), the second from the top (16).
+      expect(await page.locator('video').evaluate((v: HTMLVideoElement) => Array.from(v.textTracks).map(t => { const c = t.cues![0] as VTTCue; return [c.line, c.lineAlign]; }))).toEqual([[74, 'end'], [16, 'start']]);
+      // Each has its own timing: the second moves, the first stays.
+      const secondShift = menu(page).getByRole('group', { name: 'İkinci altyazı zamanlaması' });
+      await secondShift.getByRole('button', { name: 'Üst altyazı: 0,5 saniye geciktir' }).click();
+      await secondShift.getByRole('button', { name: 'Üst altyazı: 0,5 saniye geciktir' }).click();
+      await expect(secondShift.locator('output')).toHaveText('+1,0 sn');
+      await expect(menu(page).getByRole('group', { name: 'Altyazı zamanlaması', exact: true }).locator('output')).toHaveText('0,0 sn');
+      expect(await page.locator('video').evaluate((v: HTMLVideoElement) => (v.textTracks[1].cues![0] as VTTCue).startTime)).toBeCloseTo(1.2, 1);
+
+      // The text size changes what is drawn: the rows the subtitles cover grow with it.
+      const closeMenu = async () => { await page.getByRole('button', { name: 'Ses ve altyazı', exact: true }).click(); await expect(menu(page)).toHaveCount(0); };
+      await closeMenu();
+      const small = await cueRows(page);
+      expect(small.bottom).toBeGreaterThan(0); expect(small.top).toBeGreaterThan(0);
+      await openMenu(page);
+      for (let i = 0; i < 10; i++) await menu(page).getByRole('button', { name: 'Altyazı yazısını büyüt' }).click();
+      await expect(menu(page).getByRole('group', { name: 'Altyazı yazısı' }).locator('output')).toHaveText('%200');
+      await menu(page).getByRole('combobox', { name: 'Altyazı yazı tipi' }).selectOption('serif');
+      await closeMenu();
+      const big = await cueRows(page);
+      expect(big.bottom).toBeGreaterThan(small.bottom * 1.6);
+      expect(big.top).toBeGreaterThan(small.top * 1.6);
+      await page.waitForTimeout(300); await page.locator('.player').screenshot({ path: 'test-results/tracks-dual.png' });
+
+      // The set is written to the Mac a moment after the last change: the files' text and the choices, no address.
+      const shelf = path.join(data, 'subtitle-saves'), onDisk = async () => { try { const names = await readdir(shelf); return names.length === 1 ? await readFile(path.join(shelf, names[0]), 'utf8') : ''; } catch { return ''; } };
+      await expect.poll(async () => { try { return JSON.parse(await onDisk()).shift.second; } catch { return null; } }, { timeout: 8000 }).toBe(1);
+      const raw = await onDisk();
+      expect(raw).toContain('Merhaba dünya'); expect(raw).not.toMatch(/kiyi:|https?:/);
+      expect(JSON.parse(raw)).toMatchObject({ main: { file: 'eski.srt' }, second: { file: 'altyazi.srt' }, shift: { main: 0, second: 1 } });
+      // Opening the same film again brings both back, with the second one's shift.
+      await saved(page);
+      await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      await playFilm(page);
+      await openMenu(page);
+      await expect(menu(page).getByRole('radiogroup', { name: 'Altyazı', exact: true }).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
+      await expect(menu(page).getByRole('radiogroup', { name: 'İkinci altyazı', exact: true }).getByRole('radio', { name: 'altyazi.srt' })).toBeChecked();
+      await expect(menu(page).getByRole('group', { name: 'İkinci altyazı zamanlaması' }).locator('output')).toHaveText('+1,0 sn');
+      await expect.poll(async () => (await cues(page)).map(t => [t.mode, t.count])).toEqual([['showing', 1], ['showing', 2]]);
+      await expect(menu(page).getByText('Bu filmin altyazı ayarları kayıtlı')).toBeVisible();
 
       // Escape closes the menu first and only then the player.
       await page.keyboard.press('Escape');
@@ -134,6 +211,8 @@ try {
   const library = JSON.parse(await readFile(path.join(data, (await readdir(data)).find(name => /^library-[a-f0-9]{24}\.json$/.test(name))!), 'utf8'));
   // What is kept is the language, not a track number or a file name.
   expect(library.preferences.audio).toBe('tr');
+  // The look of the subtitle text is kept too, for every title.
+  expect(library.preferences.subtitleSize).toBe(200); expect(library.preferences.subtitleFont).toBe('serif');
   expect(JSON.stringify(library)).not.toContain('altyazi');
   {
     // A new window: the Turkish dub is chosen by itself, for a film and for an episode alike.
@@ -143,9 +222,10 @@ try {
       await expect.poll(async () => (await probe(page)).enabled).toEqual([false, true]);
       await openMenu(page);
       await expect(menu(page).getByRole('radio', { name: 'Türkçe' })).toBeChecked();
-      // Nothing carries over for subtitles: a new film starts without them.
-      await expect(menu(page).getByRole('radio', { name: 'Kapalı' })).toBeChecked();
-      expect(await cues(page)).toEqual([]);
+      // What was set up for this film is on disk, so it is back by itself in a new window.
+      await expect(menu(page).getByRole('radiogroup', { name: 'Altyazı', exact: true }).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
+      await expect(menu(page).getByRole('radiogroup', { name: 'İkinci altyazı', exact: true }).getByRole('radio', { name: 'altyazi.srt' })).toBeChecked();
+      expect((await cues(page)).length).toBe(2);
       // Back to English by choice, and that is what the next title follows.
       await menu(page).getByRole('radio', { name: 'İngilizce' }).click();
       await expect.poll(async () => (await probe(page)).enabled).toEqual([true, false]);
@@ -156,6 +236,10 @@ try {
       await page.getByRole('button', { name: /^\d+ Birinci test/ }).click();
       await playing(page);
       await expect.poll(async () => (await probe(page)).enabled).toEqual([true, false]);
+      // Another title does not inherit them.
+      expect(await cues(page)).toEqual([]);
+      await openMenu(page);
+      await expect(menu(page).getByRole('radio', { name: 'Kapalı' })).toBeChecked();
       // Live TV has no dubs or subtitles to choose, so it has no such button.
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
       await page.getByRole('button', { name: 'Canlı TV', exact: true }).click();

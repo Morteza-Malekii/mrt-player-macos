@@ -34,10 +34,18 @@ export interface SubtitleFile { name: string; data: string }
 // Which services have a key saved. The keys themselves never leave the privileged process.
 export interface SubtitleKeys { opensubtitles: boolean; opensubtitlesLogin: boolean; subdl: boolean }
 export interface SubtitleKeyValues { opensubtitlesKey?: string; opensubtitlesUser?: string; opensubtitlesPassword?: string; subdlKey?: string }
+// What the viewer set up for one film or episode, kept on this Mac so the next time it plays it is already so: the
+// subtitle files (their text is stored, so nothing is downloaded again), which one each of the two slots shows, and
+// how far each was shifted. A subtitle inside the film is remembered by its track number.
+export interface SavedSubtitleFile { name: string; text: string }
+export type SavedPick = 'off' | { file: string } | { track: number };
+export interface SavedSubtitles { files: SavedSubtitleFile[]; main: SavedPick; second: SavedPick; shift: { main: number; second: number } }
 export interface SubtitleQuery { title: string; year?: number; season?: number; episode?: number; tmdb?: number; imdb?: number; source?: string; hint: string }
 // `audio` is the language ('tr', 'fa') of the dub the viewer chose last; a film or episode that has a
 // track in it starts on that one. Absent until a choice is made, then the file's own default holds.
-export interface Preferences { volume: number; muted: boolean; resume: boolean; posters: boolean; autoRetry: boolean; audio?: string }
+// `subtitleSize` is the subtitle text's size as a percent of the player's usual size (absent: 100) and `subtitleFont`
+// one of SUBTITLE_FONTS (core/subtitles.ts); they apply to every subtitle the viewer turns on.
+export interface Preferences { volume: number; muted: boolean; resume: boolean; posters: boolean; autoRetry: boolean; audio?: string; subtitleSize?: number; subtitleFont?: string }
 export interface Recent { item: Item; at: number; position: number }
 // A PIN that keeps chosen categories out of sight. Only a salted hash is stored; `categories`
 // holds `kind:categoryId` keys, because category ids repeat across live, film and series.
@@ -65,7 +73,7 @@ export interface Download { id: string; source?: string; name: string; state: Do
 // turned into an MP4; a finished one is handed to the downloads list (`fileId`), which plays and removes it.
 export type RecordingState = 'scheduled' | 'recording' | 'converting' | 'done' | 'failed' | 'missed';
 export interface Recording { id: string; streamId: string; channel: string; name: string; state: RecordingState; start?: number; end?: number; startedAt?: number; bytes: number; error?: string; fileId?: string; hasFile?: boolean }
-export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats' | 'download' | 'downloads' | 'cancelDownload' | 'retryDownload' | 'removeDownload' | 'revealDownload' | 'playDownload' | 'trashDownload' | 'downloadSize' | 'downloadSettings' | 'record' | 'recordSchedule' | 'recordings' | 'stopRecording' | 'removeRecording' | 'retryRecording' | 'revealRecording' | 'tracks' | 'subtitleCues' | 'subtitleSearch' | 'subtitleGet' | 'subtitleKeys' | 'saveSubtitleKeys';
+export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats' | 'download' | 'downloads' | 'cancelDownload' | 'retryDownload' | 'removeDownload' | 'revealDownload' | 'playDownload' | 'trashDownload' | 'downloadSize' | 'downloadSettings' | 'record' | 'recordSchedule' | 'recordings' | 'stopRecording' | 'removeRecording' | 'retryRecording' | 'revealRecording' | 'tracks' | 'subtitleCues' | 'subtitleSearch' | 'subtitleGet' | 'subtitleKeys' | 'saveSubtitleKeys' | 'savedSubtitles' | 'saveSubtitles' | 'forgetSubtitles';
 export interface Bridge { call<T>(action: Action, payload?: unknown): Promise<T> }
 export interface Platform extends Bridge { type: 'mac' | 'tv' | 'preview'; attach(video: HTMLVideoElement, playback: Playback, onError: (message: string) => void): () => void; exit(): void }
 export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true, posters: false, autoRetry: false }, locks: { categories: [] }, hidden: [], order: { categories: {}, items: {} } };

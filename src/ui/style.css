@@ -137,3 +137,10 @@ video::cue{font-size:1.1em;background:rgba(0,0,0,.72);color:#fff}
 .track-shift button{padding:5px 8px;font-size:11px;border-radius:7px}
 .track-shift output{min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
 .key-saved{display:inline;color:#80e1be}
+.track-font{display:block;margin:10px 0 0;font-size:11px;color:#a8b6c4}
+.track-font select{margin-top:5px;padding:7px 8px;font-size:12px;border-radius:7px}
+.subtitle-saved{color:#9aedd0}
+.link-button{display:inline;padding:0;border:0;background:none;color:#9aedd0;text-decoration:underline;font-size:inherit}
+.link-button:hover{background:none}
+.second-subtitle{margin-top:12px;padding-top:10px;border-top:1px solid #2c3f4a}
+.second-subtitle>strong small{display:inline;font-weight:400;color:#93a6b5}

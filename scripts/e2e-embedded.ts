@@ -108,6 +108,21 @@ try {
       await subtitles(page).getByRole('radio', { name: 'Kapalı' }).click();
       await expect.poll(() => active(page)).toEqual([]);
 
+      // Both of the file's subtitles at once (English low, Turkish above it), each read from the file as it plays.
+      const first = menu(page).getByRole('radiogroup', { name: 'Altyazı', exact: true }), second = menu(page).getByRole('radiogroup', { name: 'İkinci altyazı', exact: true });
+      await first.getByRole('radio', { name: 'İngilizce · SDH' }).click();
+      await menu(page).getByRole('button', { name: 'İkinci altyazı ekle (dil öğrenmek için)' }).click();
+      await second.getByRole('radio', { name: 'Türkçe' }).click();
+      await expect(first.getByRole('radio', { name: 'Türkçe' })).toBeDisabled(); // not the same subtitle twice
+      await jump(page, 9.5);
+      await expect.poll(() => active(page), { timeout: 15000 }).toEqual(['Hello two']);
+      await jump(page, 10.5);
+      await expect.poll(() => active(page), { timeout: 15000 }).toContain('Çok güzel bir gün');
+      await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => Array.from(v.textTracks).map(t => [t.label, t.mode, t.cues && t.cues.length ? [(t.cues[0] as VTTCue).line, (t.cues[0] as VTTCue).lineAlign] : null]))).toEqual([['Altyazı', 'showing', [74, 'end']], ['İkinci altyazı', 'showing', [16, 'start']]]);
+      await menu(page).getByRole('button', { name: 'İkinci altyazıyı kaldır' }).click();
+      await first.getByRole('radio', { name: 'Kapalı' }).click();
+      await expect.poll(() => active(page)).toEqual([]);
+
       // Back to the AAC dub: the plain file again, from where the film was.
       const at = (await state(page)).time;
       await audio(page).getByRole('radio', { name: 'İngilizce' }).click();
