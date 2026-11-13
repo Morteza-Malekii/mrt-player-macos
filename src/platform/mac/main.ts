@@ -6,9 +6,12 @@ import { Session, type Vault } from '../../runtime/session';
 import { FileLibraryStore, atomicWrite, exists, remove } from '../../runtime/storage';
 import { AppError } from '../../core/errors';
 import { MediaGateway } from './media';
+import { MediaInspector, keyOf } from './inspector';
+import { Remuxer } from './remux';
 import { ImageGateway } from './images';
 import { DownloadManager } from './downloads';
 import { RecordingManager } from './recordings';
+import { SubtitleService, sourceOpener, type StoredKeys, type SubtitleKeyStore } from './subtitles';
 import type { Action, Credentials } from '../../core/models';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'kiyi', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]);
@@ -25,6 +28,19 @@ class MacVault implements Vault {
     catch { throw new AppError('KEYCHAIN', 'Güvenli kayıt açılamadı. Anahtar Zinciri erişimini kontrol edin veya tekrar giriş yapın.'); }
   }
 }
+// The subtitle services' keys, encrypted with the Keychain like the account. They are the viewer's own, so they
+// stay when the account is forgotten.
+class MacSubtitleKeys implements SubtitleKeyStore {
+  constructor(private file: string) {}
+  async load(): Promise<StoredKeys> {
+    try { return JSON.parse(safeStorage.decryptString(await promisify(fs.readFile)(this.file))); } catch { return {}; }
+  }
+  async save(keys: StoredKeys) {
+    if (!Object.keys(keys).length) { await remove(this.file); return; }
+    if (!safeStorage.isEncryptionAvailable()) throw new AppError('KEYCHAIN', 'macOS Anahtar Zinciri kullanılamıyor; anahtar kaydedilemedi.');
+    await atomicWrite(this.file, safeStorage.encryptString(JSON.stringify(keys)));
+  }
+}
 let window: BrowserWindow | null = null;
 app.setName('MRT-Player');
 // Reuse the previous profile when upgrading so saved accounts and preferences remain available.
@@ -33,26 +49,38 @@ if (fs.existsSync(previousData)) app.setPath('userData', previousData);
 // Automated release validation uses a disposable profile path; no credentials are passed in env.
 if (process.env.KIYI_TEST_MODE === '1' && process.env.KIYI_TEST_DATA && path.isAbsolute(process.env.KIYI_TEST_DATA)) app.setPath('userData', process.env.KIYI_TEST_DATA);
 app.whenReady().then(async () => {
-  const gateway = new MediaGateway(), images = new ImageGateway(), data = app.getPath('userData');
+  // The converter ships next to the app (scripts/build.mjs copies it); inside a packaged app it sits beside
+  // the archive, not in it, because a program cannot run from inside an asar file. Recordings use it for
+  // MP4, films for the dubs Chromium cannot decode (remux.ts).
+  const ffmpeg = path.join(__dirname, 'ffmpeg').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+  let remuxer: Remuxer | undefined;
+  const inspector = new MediaInspector(() => !!remuxer?.available());
+  const gateway = new MediaGateway(inspector.reader), images = new ImageGateway(), data = app.getPath('userData');
   const downloadsFolder = () => process.env.KIYI_TEST_MODE === '1' && process.env.KIYI_TEST_DOWNLOADS && path.isAbsolute(process.env.KIYI_TEST_DOWNLOADS) ? process.env.KIYI_TEST_DOWNLOADS : path.join(app.getPath('downloads'), 'MRT-Player');
   const downloads = new DownloadManager(downloadsFolder, file => shell.showItemInFolder(file), file => shell.trashItem(file), path.join(data, 'downloads.json'));
-  // The MP4 converter ships next to the app (scripts/build.mjs copies it); inside a packaged app it sits
-  // beside the archive, not in it, because a program cannot run from inside an asar file.
+  downloads.inspector = inspector;
+  remuxer = new Remuxer(ffmpeg, inspector, { has: gateway.has, serve: (token, method, range, signal) => gateway.serve(token, method, range, signal), file: downloads.file });
   let blocker = -1;
   const recordings = new RecordingManager({
     folder: downloadsFolder, index: path.join(data, 'recordings.json'), downloads, show: file => shell.showItemInFolder(file),
-    ffmpeg: path.join(__dirname, 'ffmpeg').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`),
+    ffmpeg,
     // A recording needs the Mac awake; this keeps it from being suspended while one runs or is planned.
     keepAwake: on => { if (on && blocker < 0) blocker = powerSaveBlocker.start('prevent-app-suspension'); else if (!on && blocker >= 0) { powerSaveBlocker.stop(blocker); blocker = -1; } },
     tickMs: process.env.KIYI_TEST_MODE === '1' ? 500 : 5000
   });
-  app.on('before-quit', () => recordings.shutdown());
-  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', gateway.add, gateway.clear, gateway.stats, gateway.useLimit, downloads, recordings);
+  app.on('before-quit', () => { recordings.shutdown(); remuxer?.close(); });
+  // A film (not a live channel) is watched for its tracks from the moment its address is handed out.
+  const media = (url: string, file?: boolean) => { const local = gateway.add(url), key = keyOf(local); if (file && key) inspector.watch(key); return local; };
+  const stopMedia = () => { remuxer?.stop(); gateway.clear(); inspector.clear(); };
+  const tracks = { tracks: inspector.tracks, cues: inspector.cues };
+  const subtitles = new SubtitleService(new MacSubtitleKeys(path.join(data, 'subtitle-keys.enc')), sourceOpener({ serve: (token, range, signal) => gateway.serve(token, 'GET', range, signal, false), localFile: downloads.file }));
+  const runtime = new Session(new MacVault(path.join(data, 'account.enc')), new FileLibraryStore(data), 'mac', media, stopMedia, gateway.stats, gateway.useLimit, downloads, recordings, tracks, subtitles);
   const csp = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: kiyi:; media-src kiyi: blob:; connect-src kiyi:; worker-src blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
   protocol.handle('kiyi', async request => {
     const url = new URL(request.url);
     if (url.host === 'media') return gateway.handle(request);
     if (url.host === 'local') return downloads.serve(request);
+    if (url.host === 'remux') return remuxer!.handle(request);
     if (url.host === 'image') return images.handle(request, runtime.posterUrl);
     if (url.host !== 'app') return new Response(null, { status: 404 });
     const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);

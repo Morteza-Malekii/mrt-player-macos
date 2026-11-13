@@ -3,7 +3,7 @@
 Backend geliştiricisi olup frontend'e yeni başlayanlar için. Bu belge repoyu
 **nasıl yazıldığını, nasıl çalıştığını ve nasıl geliştirileceğini** anlatır.
 
-- Kod durumu: sürüm **0.2.1**, 2026-09-30 tarihli çalışma dizini.
+- Kod durumu: sürüm **0.2.3**, 2026-09-30 tarihli çalışma dizini.
 - Belgedeki her iddia koddan okunarak yazıldı. Doğrulanamayan yerler açıkça
   "doğrulanmadı" diye işaretlendi.
 - Satır numarası yerine dosya ve fonksiyon adı verildi; satırlar kayar, adlar
@@ -779,8 +779,9 @@ kilit simgesi yoktur.
 
 ### 6.6.3 Ses ve altyazı
 
-Oynatıcının sağ altındaki menü (`Player.tsx`) iki şey yapar; ikisi de **tarayıcının
-yapabildiğiyle** sınırlıdır ve bu sınırlar `docs/VALIDATION.md` içinde ölçülmüştür:
+Oynatıcının sağ altındaki menü (`Player.tsx`) iki şey yapar. Aşağıdaki iki madde
+**tarayıcının tek başına** yapabildiğini anlatır; Mac'te dosyanın kendisi de okunur
+(bir sonraki başlık), ölçümler `docs/VALIDATION.md` içinde:
 
 - **Dublaj (ses parçası).** Chromium `video.audioTracks` listesini varsayılan olarak
   vermez; `main.ts` içinde pencereye `enableBlinkFeatures: 'AudioVideoTracks'`
@@ -803,6 +804,31 @@ saklanınca "Türkçe parçası olan her film ve bölüm onunla başlar". Altyaz
 hiçbir yere kaydedilmez. `loadedmetadata` olayında (parçalar o zaman belirir)
 `preferredTrack` kayıtlı dilin ilk parçasını bulur; yoksa dosyanın kendi varsayılanı
 kalır.
+
+### 6.6.4 Dosyanın içindeki bütün dublajlar ve altyazılar (Mac)
+
+Chromium'un vermediğini uygulama dosyanın kendisinden okur. Backend benzetmesi:
+reverse proxy'den geçen yanıt gövdesini bir **tee** ile kopyalayıp yan tarafta
+ayrıştırmak; istemci hiçbir şey fark etmez, sağlayıcıya ikinci bağlantı açılmaz.
+
+- [container.ts](../src/platform/mac/container.ts): Matroska (EBML) ve MP4 okuyucusu.
+  Başlıktan iz listesini (dil, ad, codec, kanal, varsayılan/zorunlu) çıkarır; Matroska
+  gövdesindeki metin altyazı bloklarını (SRT, ASS, WebVTT) zamanıyla toplar. Her
+  istek (byte aralığı) için ayrı okuyucu vardır; ortadan başlayan okuyucu önce bir
+  küme (`Cluster`) başı arar.
+- [inspector.ts](../src/platform/mac/inspector.ts): dosya başına durum (iz listesi +
+  altyazı satırları). `MediaGateway` ve indirilen dosya sunucusu baytları buraya
+  verir. Sayfa `tracks` ve `subtitleCues` IPC çağrılarıyla okur.
+- [remux.ts](../src/platform/mac/remux.ts): Chromium'un çözemediği dublaj (AC-3,
+  E-AC-3, DTS) seçilince paketli FFmpeg görüntüyü **kopyalar**, yalnızca sesi AAC'ye
+  çevirir ve parçalı MP4 olarak `kiyi://remux/...` adresinden verir. FFmpeg dosyayı
+  yine `MediaGateway` üzerinden okur (yalnızca geçidin token'larını bilen bir
+  loopback adresi), yani bağlantı sınırı ve paralel şeritler ona da uygulanır.
+- [adapter.ts](../src/platform/mac/adapter.ts) `remux()`: bu akışı Media Source
+  Extensions ile `<video>`'ya besler. Zaman damgaları dosyanınkidir; tamponun
+  dışına sarılınca o noktadan yeni bir dönüşüm başlar.
+- `Player.tsx` bunu bir **rota** olarak görür: aynı başlık ya düz dosyadan ya da
+  dönüştürücüden oynar (`route`). AAC bir dublaja dönülünce düz dosyaya geri geçilir.
 
 **Menünün açık/kapalı durumu `App.tsx`'te** (`trackMenu`) durur, `Player`'da değil:
 Esc yığını (6.6) `App`'te olduğu için menünün Esc ile önce kapanabilmesi ancak böyle
@@ -1262,6 +1288,16 @@ takıldığını da doğrular). Yeni bir test yazarken bu alışkanlığı sürd
 6. Test: `tests/core.test.ts` içinde sahte `Transport` ile (`{ json: async ()
    => ... }`). E2E için `fixture.ts`'e ilgili `action` yanıtını ekle; yoksa
    fixture `400 unsupported` döner.
+
+### 13.3b Örnek: internetten altyazı arama (0.2.3)
+
+Bu özellik 13.3'teki tarifin gerçek bir uygulaması; hangi katmanın ne yaptığını görmek için iyi bir okuma:
+
+- `src/core/subtitles.ts` — saf mantık (ad temizleme, sıralama). Backend'deki "domain/service" katmanına benzer, ağa dokunmaz, kolay test edilir.
+- `src/platform/mac/subtitles.ts` — dış servislerle konuşan "istemci". Anahtarlar ve indirme bağlantıları burada kalır; sayfa (tarayıcı tarafı) yalnızca opak bir kimlik görür. Bu, bir REST API'nin gizli anahtarını ön yüze vermemeniz gibi.
+- `src/runtime/session.ts` — `subtitleSearch`, `subtitleGet`, `subtitleKeys`, `saveSubtitleKeys` eylemleri ("controller"). Filmin TMDB numarasını burada `get_vod_info` ile öğrenir.
+- `src/ui/SubtitleSearch.tsx` ve `src/ui/SubtitleKeys.tsx` — ekran parçaları; ilki oynatıcının altyazı menüsünde, ikincisi Ayarlar'da.
+- `tests/subtitles.test.ts` — iki sahte HTTP sunucusuna karşı bütün akış; gerçek servis ve anahtar gerekmez.
 
 ### 13.4 Tarif: yeni bir ekran (kenar çubuğu girişi)
 

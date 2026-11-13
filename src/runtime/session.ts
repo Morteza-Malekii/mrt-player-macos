@@ -2,7 +2,8 @@ import { createHash } from 'crypto';
 import { AppError, id, object, publicError, text } from '../core/errors';
 import { imageUrl, normalizeCredentials, parseKind, Xtream } from '../core/xtream';
 import { normalizeLibrary } from '../core/library';
-import type { Account, Action, Credentials, Download, Item, Library, Login, Playback, Recording, Reply, Status } from '../core/models';
+import type { Account, Action, Credentials, CueBatch, Download, Item, Library, Login, MediaTracks, Playback, Recording, Reply, Status, SubtitleFile, SubtitleKeys, SubtitleKeyValues, SubtitleQuery, SubtitleSearchResult } from '../core/models';
+import { describeName } from '../core/subtitles';
 import { NodeTransport } from './http';
 export interface Vault { exists(): Promise<boolean>; save(credentials: Credentials, passphrase?: string): Promise<void>; load(passphrase?: string): Promise<Credentials>; clear(): Promise<void> }
 // `readIcons`/`writeIcons` keep the poster addresses of favourites and history in a file the
@@ -14,6 +15,12 @@ export interface DownloadHost { start(url: string, name: string, extension: stri
 // Live channels written to disk. The page names a channel by id; the address (which carries the account)
 // is built here, handed over as `bind`'s resolver, and never goes back to the page. `bind('', undefined)` ends the account's recordings.
 export interface RecordingHost { start(streamId: string, channel: string, minutes?: number): Recording; schedule(streamId: string, channel: string, start: number, end: number): Recording; stop(id: string): void; remove(id: string): void; retry(id: string): void; reveal(id: string): void; list(): Recording[]; bind(profile: string, source?: (streamId: string, hls: boolean) => string): void }
+// What a film's own file holds (dubs, subtitles), read as it plays. The page names the file by the local
+// address it plays; a platform without this simply reports nothing and the player lists what it can see.
+export interface TrackHost { tracks(url: string): MediaTracks | null; cues(url: string, track: number, since: number): CueBatch }
+// Subtitles from the internet. The page names the film it is playing; the keys, the services and the links stay behind this.
+export interface SubtitleHost { configured(): Promise<SubtitleKeys>; save(values: SubtitleKeyValues): Promise<SubtitleKeys>; search(query: SubtitleQuery): Promise<SubtitleSearchResult>; get(id: string): Promise<SubtitleFile> }
+const count = (value: unknown, max: number) => { const n = Math.floor(Number(value)); return Number.isFinite(n) && n >= 0 ? Math.min(n, max) : 0; };
 export class Session {
   private client?: Xtream;
   private account?: Account;
@@ -28,7 +35,7 @@ export class Session {
   // is ever contacted, whatever the page asks for) and no poster address is kept on disk.
   private posters = false;
   posterUrl = (kind: string, id: string): string | undefined => this.account && this.posters ? this.icons.get(`${kind}:${id}`) : undefined;
-  constructor(private vault: Vault, private store: LibraryStore, private platform: Status['platform'], private media: (url: string) => string = u => u, private clearMedia: () => void = () => {}, private mediaStats: () => unknown = () => null, private mediaLimit: (max: number) => void = () => {}, private downloads?: DownloadHost, private recordings?: RecordingHost) {}
+  constructor(private vault: Vault, private store: LibraryStore, private platform: Status['platform'], private media: (url: string, file?: boolean) => string = u => u, private clearMedia: () => void = () => {}, private mediaStats: () => unknown = () => null, private mediaLimit: (max: number) => void = () => {}, private downloads?: DownloadHost, private recordings?: RecordingHost, private inspect?: TrackHost, private subtitles?: SubtitleHost) {}
   async call(action: Action, payload?: unknown): Promise<Reply> {
     try { return { ok: true, data: await this.dispatch(action, object(payload)) }; }
     catch (error) { return { ok: false, error: publicError(error) }; }
@@ -81,6 +88,26 @@ export class Session {
     return client.stream(kind, text(p.id), ext);
   }
   private recorder(): RecordingHost { if (!this.recordings) throw new AppError('METHOD', 'Bu cihazda kayıt desteklenmiyor.'); return this.recordings; }
+  private subs(): SubtitleHost { if (!this.subtitles) throw new AppError('METHOD', 'Bu cihazda altyazı araması desteklenmiyor.'); return this.subtitles; }
+  // What the search is told about the film: its title, year and film-database numbers when the provider knows them
+  // (an episode asks about its series), else only what the name says. The name of a download carries no id.
+  private async subtitleQuery(client: Xtream, p: Record<string, any>): Promise<SubtitleQuery> {
+    const name = text(p.name, 250), parts = describeName(name), series = text(p.series, 250) ? describeName(text(p.series, 250)).title : '';
+    const episode = p.kind === 'series', local = p.local === true, number = (n: unknown) => { const v = Number(n); return Number.isInteger(v) && v >= 0 && v < 10000 ? v : undefined; };
+    const season = episode ? number(p.season) ?? parts.season : undefined, number_ = episode ? number(p.episode) ?? parts.episode : undefined; // number_: the episode's number
+    const query: SubtitleQuery = { title: (episode && series) || parts.title || name, hint: name, ...(parts.year ? { year: parts.year } : {}), ...(season !== undefined && number_ !== undefined ? { season, episode: number_ } : {}) };
+    const source = text(p.url, 300); if (source) query.source = source;
+    const lookup = local ? '' : episode ? text(p.seriesId, 20) : text(p.id, 20);
+    if (/^\d{1,20}$/.test(lookup)) {
+      try {
+        const detail = await client.detail(episode ? 'series' : 'vod', lookup);
+        if (detail.tmdb) query.tmdb = Number(detail.tmdb); if (detail.imdb) query.imdb = Number(detail.imdb);
+        const known = describeName(detail.title); if (known.title && !(episode && series)) query.title = known.title;
+        const year = Number(/\d{4}/.exec(detail.year)?.[0]); if (!episode && year >= 1900 && year <= 2100) query.year = year;
+      } catch { /* the name alone is enough to search by */ }
+    }
+    return query;
+  }
   private host(): DownloadHost { if (!this.downloads) throw new AppError('METHOD', 'Bu cihazda indirme desteklenmiyor.'); return this.downloads; }
   private async dispatch(action: Action, p: Record<string, any>): Promise<unknown> {
     if (action === 'status') return { saved: await this.vault.exists(), requiresPassphrase: this.platform === 'tv', platform: this.platform };
@@ -106,8 +133,14 @@ export class Session {
       case 'play': {
         const kind = parseKind(p.kind), ext = kind === 'live' ? 'm3u8' : text(p.extension, 8);
         this.clearMedia();
-        return { url: this.media(client.stream(kind, text(p.id), ext)), format: ext === 'm3u8' ? 'hls' : ext === 'ts' ? 'ts' : 'file', live: kind === 'live', engine: kind === 'live' ? 'js' : undefined, buffer: 'large' } as Playback;
+        return { url: this.media(client.stream(kind, text(p.id), ext), kind !== 'live' && ext !== 'm3u8'), format: ext === 'm3u8' ? 'hls' : ext === 'ts' ? 'ts' : 'file', live: kind === 'live', engine: kind === 'live' ? 'js' : undefined, buffer: 'large' } as Playback;
       }
+      case 'tracks': return this.inspect?.tracks(text(p.url, 300)) ?? null;
+      case 'subtitleCues': return this.inspect?.cues(text(p.url, 300), count(p.track, 1 << 30), count(p.since, 1 << 30)) ?? { cues: [], next: 0 };
+      case 'subtitleKeys': return this.subs().configured();
+      case 'saveSubtitleKeys': return this.subs().save({ opensubtitlesKey: p.opensubtitlesKey, opensubtitlesUser: p.opensubtitlesUser, opensubtitlesPassword: p.opensubtitlesPassword, subdlKey: p.subdlKey });
+      case 'subtitleSearch': return this.subs().search(await this.subtitleQuery(client, p));
+      case 'subtitleGet': return this.subs().get(text(p.id, 40));
       case 'download': { const host = this.host(), url = this.fileUrl(client, p); return host.start(url, text(p.name, 200).trim() || 'İsimsiz', /\.([a-z0-9]{1,6})$/.exec(url)?.[1] || 'mp4', `${parseKind(p.kind)}:${text(p.id, 20)}`); }
       // How big the file is, so the viewer knows before pressing the button. 0 means the server did not say.
       case 'downloadSize': { const host = this.host(); return host.size(this.fileUrl(client, p)); }

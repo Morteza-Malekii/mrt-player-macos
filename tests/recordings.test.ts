@@ -172,7 +172,8 @@ test('çıkış yapınca süren kayıt durur, ham dosya kalır ve sonraki giriş
     again.bind('p', () => '');
     await until(() => again.list()[0]?.state === 'done');
     valid(path.join(first.folder, again.list()[0].name));
-    assert.deepEqual(fs.readdirSync(first.folder).filter(f => f.endsWith('.ts')), []);
+    // The row turns done when the MP4 reaches the downloads list; the raw file is removed a moment later.
+    await until(() => fs.readdirSync(first.folder).filter(f => f.endsWith('.ts')).length === 0);
     again.shutdown();
   } finally { first.rec.shutdown(); s.close(); fs.rmSync(dir, { recursive: true }); }
 });

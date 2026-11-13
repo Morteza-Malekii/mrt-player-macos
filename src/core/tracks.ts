@@ -1,5 +1,6 @@
 // Audio languages and subtitle files for films and episodes. Pure functions only: the player
 // reads the tracks off the video element and hands their language codes and a file's bytes here.
+import type { MediaTrack, VideoFamily } from './models';
 
 // Containers say `tur`, `per` or `tr` for the same language. One key per language ('tr', 'fa'),
 // or '' when the file does not say, so a remembered choice can be matched across titles.
@@ -29,6 +30,39 @@ export function trackNames(languages: Array<string | undefined>): string[] {
 export function preferredTrack(languages: Array<string | undefined>, wanted: string | undefined): number {
   return wanted ? languages.findIndex(code => languageKey(code) === wanted) : -1;
 }
+
+// Names for the tracks a file lists (see MediaTrack): the language, then what the file calls the track
+// ("SDH", "Latin American", "Commentary") unless that only repeats the language, then the channel layout
+// of a surround dub. A forced subtitle (signs and foreign lines only) says so. Two tracks that would still
+// read the same get a number.
+const english = (key: string) => { try { return new Intl.DisplayNames('en', { type: 'language' }).of(key) || ''; } catch { return ''; } };
+const layout = (channels?: number) => !channels || channels <= 2 ? '' : channels === 6 ? '5.1' : channels === 8 ? '7.1' : `${channels} kanal`;
+export function mediaTrackNames(tracks: Array<Pick<MediaTrack, 'language' | 'name' | 'channels' | 'forced' | 'order'>>): string[] {
+  const names = tracks.map(t => {
+    const key = languageKey(t.language), language = key ? languageName(key) : '';
+    const same = (value: string) => [language, key ? english(key) : '', t.language].some(other => other && other.toLocaleLowerCase('tr') === value.toLocaleLowerCase('tr'));
+    const name = t.name && !same(t.name) ? t.name : '';
+    const parts = [language, name, layout(t.channels), t.forced && !/forced|zorunlu/i.test(t.name) ? 'zorunlu' : ''].filter(Boolean);
+    return parts.length ? parts.join(' · ') : `Parça ${t.order + 1}`;
+  });
+  const total = new Map<string, number>(), seen = new Map<string, number>();
+  for (const name of names) total.set(name, (total.get(name) || 0) + 1);
+  return names.map(name => { if (total.get(name)! < 2) return name; const n = (seen.get(name) || 0) + 1; seen.set(name, n); return `${name} ${n}`; });
+}
+// Where a listed dub sits in the video element's own list, or -1 when Chromium does not offer it (a codec
+// it cannot decode). Chromium numbers its tracks from 1 in file order; MP4 may use the file's track id.
+export function nativeIndex(track: Pick<MediaTrack, 'id' | 'index' | 'language'>, natives: Array<{ id: string; language: string }>): number {
+  return natives.findIndex(n => (n.id === String(track.index + 1) || n.id === String(track.id)) && languageKey(n.language) === languageKey(track.language));
+}
+// The dub a title starts on: the language chosen last time, else the one the file marks as default.
+export function startingTrack<T extends Pick<MediaTrack, 'language' | 'default'>>(audio: T[], wanted: string | undefined): T | undefined {
+  return (wanted ? audio.find(t => languageKey(t.language) === wanted) : undefined) || audio.find(t => t.default) || audio[0];
+}
+// What the converter hands the page (platform/mac/remux.ts): the picture as it is in the file, AAC sound.
+// Chromium checks the kind of codec, not the profile or level, so one string per kind is enough.
+const FAMILY: Record<VideoFamily, string> = { avc: 'avc1.640033', hevc: 'hvc1.1.6.L93.B0', av1: 'av01.0.08M.08', vp9: 'vp09.00.40.08' };
+export const remuxType = (video: VideoFamily) => `video/mp4; codecs="${FAMILY[video]},mp4a.40.2"`;
+export const canRemux = (video: VideoFamily | undefined): video is VideoFamily => { try { return !!video && typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(remuxType(video)); } catch { return false; } };
 
 export interface Cue { start: number; end: number; text: string }
 export const MAX_SUBTITLE_BYTES = 2 * 1024 * 1024;

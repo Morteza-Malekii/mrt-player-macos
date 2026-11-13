@@ -3,6 +3,8 @@ import type { IncomingMessage } from 'http';
 import { Readable } from 'stream';
 import { request, collect } from '../../runtime/http';
 import type { MediaStats } from '../../core/models';
+import { observed } from './inspector';
+import type { Sink } from './container';
 // How many connections one film transfer may use. Providers commonly cap each connection
 // rather than the account, so splitting a file across a few lanes is the difference between
 // 16 Mbps and enough headroom to hold a 4K film. The account's own limit is the ceiling, and
@@ -11,6 +13,8 @@ import type { MediaStats } from '../../core/models';
 // limit is treated as the smallest one.
 export const lanesFor = (max: number) => Number.isFinite(max) ? Math.max(1, Math.min(4, Math.floor(max) - 1)) : 1;
 export class MediaGateway {
+  // Films are read on their way to the player for their track list and subtitles (inspector.ts).
+  constructor(private observe?: (key: string, offset: number) => Sink | undefined) {}
   private entries = new Map<string, string>();
   private reverse = new Map<string, string>();
   private open = new Set<IncomingMessage>();
@@ -126,22 +130,28 @@ export class MediaGateway {
     const token = randomBytes(24).toString('hex'), local = `kiyi://media/${token}`;
     this.entries.set(token, url); this.reverse.set(url, local); return local;
   };
-  async handle(incoming: Request): Promise<Response> {
-    const token = new URL(incoming.url).pathname.slice(1), source = this.entries.get(token), generation = this.generation;
-    if (!source || !['GET', 'HEAD'].includes(incoming.method)) return new Response(null, { status: 404 });
+  has = (token: string) => this.entries.has(token);
+  handle(incoming: Request): Promise<Response> {
+    return this.serve(new URL(incoming.url).pathname.slice(1), incoming.method, incoming.headers.get('range') || undefined, incoming.signal);
+  }
+  // The player's requests come through `handle`; the converter (remux.ts) asks for the same file here. A caller that
+  // only wants to look at a stretch of the file (the subtitle search's fingerprint) passes `observe = false`, so what
+  // it reads is not mistaken for part of the film being played.
+  async serve(token: string, method: string, range: string | undefined, signal: AbortSignal, observe = true): Promise<Response> {
+    const source = this.entries.get(token), generation = this.generation;
+    if (!source || !['GET', 'HEAD'].includes(method)) return new Response(null, { status: 404 });
     const asked = Date.now();
     this.counters.requests++;
     const release = await this.turn();
     try {
-      const range = incoming.headers.get('range');
       const response = await this.upstream(source, range ? { Range: range } : {});
       response.on('close', release);
       // How long the provider took to say anything at all: a server that stalls before the
       // first byte is a different problem from one that sends slowly.
       this.counters.slowestMs = Math.max(this.counters.slowestMs, Date.now() - asked);
-      const abort = () => response.destroy(); incoming.signal.addEventListener('abort', abort, { once: true });
+      const abort = () => response.destroy(); signal.addEventListener('abort', abort, { once: true });
       this.open.add(response);
-      response.on('close', () => { this.open.delete(response); incoming.signal.removeEventListener('abort', abort); });
+      response.on('close', () => { this.open.delete(response); signal.removeEventListener('abort', abort); });
       if (generation !== this.generation) { response.destroy(); return new Response(null, { status: 410 }); }
       const status = response.statusCode || 502;
       this.counters.lastStatus = status;
@@ -159,12 +169,14 @@ export class MediaGateway {
         headers.delete('content-length'); headers.set('content-type', 'application/vnd.apple.mpegurl');
         return new Response(manifest, { status, headers });
       }
-      if (incoming.method === 'HEAD') { response.resume(); return new Response(null, { status, headers }); }
+      if (method === 'HEAD') { response.resume(); return new Response(null, { status, headers }); }
       // A provider that caps each connection starves a 4K film on one lane while the line
       // sits idle. When the source honours ranges, pull the rest over several lanes at once
       // and hand the player a single ordered stream; the player never knows the difference.
+      const offset = status === 206 ? Number(/^bytes (\d+)-/.exec(response.headers['content-range'] || '')?.[1] || 0) : 0;
+      const sink = observe ? this.observe?.(`media/${token}`, offset) : undefined;
       const span = this.splittable(status, response, headers);
-      if (span) { response.destroy(); return new Response(this.lanesBody(source, span, incoming.signal), { status: 206, headers }); }
+      if (span) { response.destroy(); return new Response(observed(this.lanesBody(source, span, signal), sink), { status: 206, headers }); }
       const tracker = { bytes: 0, startedAt: Date.now() };
       this.inFlight.add(tracker);
       const counted = new TransformStream<Uint8Array, Uint8Array>({
@@ -172,7 +184,7 @@ export class MediaGateway {
         flush: () => { this.inFlight.delete(tracker); }
       });
       response.on('close', () => this.inFlight.delete(tracker));
-      return new Response((Readable.toWeb(response) as ReadableStream<Uint8Array>).pipeThrough(counted), { status, headers });
+      return new Response(observed((Readable.toWeb(response) as ReadableStream<Uint8Array>).pipeThrough(counted), sink), { status, headers });
     } catch { release(); this.counters.failures++; return new Response(null, { status: 502 }); }
   }
 }

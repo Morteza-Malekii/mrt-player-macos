@@ -39,9 +39,9 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
   await page.getByRole('button', { name: 'Diziler', exact: true }).click();
   await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
   await page.getByLabel('Sezon', { exact: true }).selectOption('2');
-  await expect(page.getByRole('button', { name: /İkinci test/ })).toBeVisible();
+  await expect(page.locator('button.episode', { hasText: 'İkinci test' })).toBeVisible();
   await page.screenshot({ path: `test-results/${target}-series.png` });
-  await page.getByRole('button', { name: /İkinci test/ }).click();
+  await page.locator('button.episode', { hasText: 'İkinci test' }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 20000 }).toBeGreaterThan(0.5);
   if (target === 'tv') {
     await page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {keyCode:19,bubbles:true}))");

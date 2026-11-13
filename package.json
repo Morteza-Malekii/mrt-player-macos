@@ -1,6 +1,6 @@
 {
   "name": "mrt-player-macos",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "Kişisel Xtream oynatıcı",
@@ -22,6 +22,7 @@
     "test:posters": "npm run build && tsx scripts/e2e-posters.ts",
     "test:order": "npm run build && tsx scripts/e2e-order.ts",
     "test:tracks": "npm run build && tsx scripts/e2e-tracks.ts",
+    "test:embedded": "npm run build && tsx scripts/e2e-embedded.ts",
     "test:lock": "npm run build && tsx scripts/e2e-lock.ts",
     "test:cushion": "npm run build && tsx scripts/e2e-cushion.ts",
     "test:cushion:safety": "npm run build && tsx scripts/e2e-cushion-safety.ts",

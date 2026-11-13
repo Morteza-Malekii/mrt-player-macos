@@ -1,11 +1,88 @@
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
-import type { Action, Platform, Reply } from '../../core/models';
+import type { Action, Platform, Playback, Reply } from '../../core/models';
+import { remuxType } from '../../core/tracks';
 declare global { interface Window { kiyi: { call<T>(action: Action, payload?: unknown): Promise<Reply<T>> } } }
 // Live sources drop segments, rotate upstreams and close sockets mid-stream. A bounded retry
 // keeps the channel on screen instead of turning every hiccup into an error page; the budget
 // refills once playback has been steady again, so a long session is not spent by a bad minute.
 const RETRIES = 4;
+// A film whose dub goes through the converter (platform/mac/remux.ts): fragmented MP4 is fetched from
+// kiyi://remux and appended to a MediaSource. The file's own timestamps are kept, so the timeline, the seek
+// bar and the resume position read exactly as they do for the plain file. A seek inside what is buffered
+// plays on; one outside it starts a new conversion at that point. Reading pauses once enough is buffered,
+// which pauses the converter and the provider's connection with it.
+const AHEAD = 45, BEHIND = 30;
+function remux(video: HTMLVideoElement, playback: Playback, onError: (message: string) => void): () => void {
+  const { audio, video: family, duration } = playback.remux!;
+  const base = playback.url.replace(/^kiyi:\/\//, 'kiyi://remux/'), source = new MediaSource(), address = URL.createObjectURL(source);
+  let disposed = false, buffer: SourceBuffer | undefined, run = 0, control: AbortController | undefined, from = 0, failures = 0, seekTimer: ReturnType<typeof setTimeout> | undefined;
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  const idle = async () => { while (buffer?.updating) await new Promise(resolve => buffer!.addEventListener('updateend', resolve, { once: true })); };
+  const span = (t: number) => { for (let i = 0; i < video.buffered.length; i++) if (t >= video.buffered.start(i) - 0.3 && t <= video.buffered.end(i)) return [video.buffered.start(i), video.buffered.end(i)]; return undefined; };
+  const ahead = () => { const s = span(video.currentTime); return s ? s[1] - video.currentTime : 0; };
+  const last = () => video.buffered.length ? video.buffered.end(video.buffered.length - 1) : from;
+  async function append(chunk: Uint8Array, mine: number) {
+    for (let tries = 0; ; tries++) {
+      await idle(); if (disposed || mine !== run || !buffer) return;
+      const sb = buffer, behind = sb.buffered.length ? video.currentTime - sb.buffered.start(0) : 0;
+      if (behind > BEHIND * 2) { sb.remove(0, video.currentTime - BEHIND); continue; }
+      try { sb.appendBuffer(chunk as BufferSource); await idle(); return; }
+      catch (error) {
+        // The buffer is full: make room behind playback, or let playback use some up first.
+        if ((error as DOMException).name !== 'QuotaExceededError' || tries >= 60) throw error;
+        if (behind > 6) sb.remove(0, video.currentTime - 5); else await wait(1000);
+      }
+    }
+  }
+  // `keep` carries on after a dropped connection without throwing away what is buffered.
+  async function load(at: number, keep: boolean) {
+    const mine = ++run; control?.abort(); const own = control = new AbortController(); from = at;
+    try {
+      await idle(); if (disposed || mine !== run || !buffer) return;
+      if (source.readyState === 'open') buffer.abort();
+      if (!keep && buffer.buffered.length) { buffer.remove(0, Infinity); await idle(); }
+      const response = await fetch(`${base}?audio=${audio}&at=${at.toFixed(3)}`, { signal: own.signal, cache: 'no-store' });
+      if (!response.ok || !response.body) throw new Error(`converter ${response.status}`);
+      const reader = response.body.getReader();
+      for (;;) {
+        while (!disposed && mine === run && ahead() > AHEAD) await wait(400);
+        if (disposed || mine !== run) { void reader.cancel().catch(() => {}); return; }
+        const { value, done } = await reader.read();
+        if (disposed || mine !== run) { void reader.cancel().catch(() => {}); return; }
+        if (done) break;
+        await append(value, mine);
+        if (ahead() > 5) failures = 0;
+      }
+      await idle();
+      if (!disposed && mine === run && source.readyState === 'open') source.endOfStream();
+    } catch {
+      if (disposed || mine !== run) return;
+      if (++failures > RETRIES) { onError('Dönüştürülen ses oynatılamadı. Başka bir ses seçin veya yeniden deneyin.'); return; }
+      await wait(500 * failures);
+      if (!disposed && mine === run) { const s = span(video.currentTime); void load(s ? s[1] : video.currentTime, !!s); }
+    }
+  }
+  const seeking = () => {
+    const t = video.currentTime;
+    // Already buffered, or on its way: this conversion started at or before it and is not far behind.
+    if (span(t) || (t >= from - 0.5 && t <= Math.max(from, last()) + 20)) return;
+    clearTimeout(seekTimer);
+    seekTimer = setTimeout(() => { if (!disposed && !span(video.currentTime)) void load(video.currentTime, false); }, 200);
+  };
+  source.addEventListener('sourceopen', () => {
+    if (buffer || disposed) return;
+    try { if (duration > 0) source.duration = duration; buffer = source.addSourceBuffer(remuxType(family)); }
+    catch { onError('Bu dosyanın görüntüsü bu Mac’te dönüştürülerek oynatılamıyor.'); return; }
+    const at = playback.at || 0;
+    if (at > 0) video.currentTime = at;
+    void load(at, false);
+    void video.play().catch(() => { if (!disposed) onError('Oynat düğmesine basarak yayını başlatın.'); });
+  });
+  video.addEventListener('seeking', seeking);
+  video.src = address;
+  return () => { disposed = true; run++; control?.abort(); clearTimeout(seekTimer); video.removeEventListener('seeking', seeking); video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(address); };
+}
 export const platform: Platform = {
   type: 'mac',
   async call<T>(action: Action, payload?: unknown): Promise<T> {
@@ -14,6 +91,7 @@ export const platform: Platform = {
     return reply.data as T;
   },
   attach(video, playback, onError) {
+    if (playback.remux) return remux(video, playback, onError);
     let disposed = false, attempts = 0, settle: ReturnType<typeof setTimeout> | undefined;
     const big = playback.buffer === 'large';
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -91,7 +169,7 @@ export const platform: Platform = {
       };
       if (big && !playback.live) { video.addEventListener('waiting', hold); video.addEventListener('pause', paused); video.addEventListener('play', resumed); }
       video.addEventListener('error', failed);
-      start(0);
+      start(playback.at || 0);
       return () => { stop(); video.removeEventListener('error', failed); video.removeEventListener('waiting', hold); video.removeEventListener('pause', paused); video.removeEventListener('play', resumed); video.pause(); video.removeAttribute('src'); video.load(); };
     }
     if (Hls.isSupported()) {

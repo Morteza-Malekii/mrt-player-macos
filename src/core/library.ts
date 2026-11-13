@@ -5,7 +5,16 @@ export function cleanItem(input: unknown): Item | null {
   const v = object(input);
   if (!/^\d{1,20}$/.test(text(v.id)) || !['live', 'vod', 'series'].includes(v.kind)) return null;
   // Persist only metadata. No provider URLs (they may contain credentials).
-  return { id: text(v.id), kind: v.kind, name: text(v.name, 250), categoryId: text(v.categoryId, 50), extension: /^[a-z0-9]{1,6}$/.test(v.extension) ? v.extension : undefined, isEpisode: v.isEpisode === true };
+  const item: Item = { id: text(v.id), kind: v.kind, name: text(v.name, 250), categoryId: text(v.categoryId, 50), extension: /^[a-z0-9]{1,6}$/.test(v.extension) ? v.extension : undefined, isEpisode: v.isEpisode === true };
+  // What a subtitle search needs for an episode picked up again from the history; each kept only when it is well formed.
+  if (v.isEpisode === true) {
+    const series = text(v.series, 250), number = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) < 10000;
+    if (series) item.series = series;
+    if (/^\d{1,20}$/.test(text(v.seriesId))) item.seriesId = text(v.seriesId);
+    if (number(v.season)) item.season = v.season;
+    if (number(v.episode)) item.episode = v.episode;
+  }
+  return item;
 }
 // Exactly what makePin writes: 16 random bytes and a 32 byte hash, both base64.
 const cleanPin = (input: unknown): PinRecord | undefined => { const r = object(input); return typeof r.salt === 'string' && typeof r.hash === 'string' && /^[A-Za-z0-9+/]{22}==$/.test(r.salt) && /^[A-Za-z0-9+/]{43}=$/.test(r.hash) ? { salt: r.salt, hash: r.hash } : undefined; };

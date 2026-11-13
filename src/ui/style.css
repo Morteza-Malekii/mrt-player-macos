@@ -77,6 +77,7 @@ svg{flex-shrink:0;vertical-align:middle}button svg+span{margin-left:10px}button.
 .track-note{margin:0;color:#a8b6c4}
 .track-option{display:block;width:100%;text-align:left;margin-bottom:4px;padding:8px 10px;border-radius:8px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#14212bcc;border-color:#2c3f4a}
 .track-option[aria-checked="true"]{color:#9aedd0;border-color:#80e1be}
+.track-option:disabled{cursor:default}
 .track-load{display:block;width:100%;margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px}
 .track-menu .error{margin-top:10px}
 .player-full .track-menu{right:45px;bottom:105px;width:min(560px,calc(100% - 90px))}
@@ -122,3 +123,17 @@ video::cue{font-size:1.1em;background:rgba(0,0,0,.72);color:#fff}
 .schedule-fields label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#a7b4c4}
 .schedule-fields input{font-size:14px}
 .downloads>.muted{font-size:12px;line-height:1.6;margin:0 0 16px}
+.subtitle-search{margin-top:8px}
+.subtitle-search .track-load{margin-top:0}
+.subtitle-hits{margin-top:8px;max-height:230px;overflow:auto;scrollbar-width:thin}
+.subtitle-language{margin:8px 0 5px;font-size:11px;font-weight:650;letter-spacing:.4px;color:#80e1be}
+.subtitle-hit{display:block;white-space:normal}
+.subtitle-release{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subtitle-meta{display:block;margin-top:3px;font-size:10px;color:#93a6b5}
+.subtitle-exact{margin-left:8px;padding:1px 6px;border-radius:5px;background:#1f3f37;color:#9aedd0;font-weight:600}
+.subtitle-note{color:#f3ca84}
+.track-shift{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px}
+.track-shift span{flex:1;color:#a8b6c4}
+.track-shift button{padding:5px 8px;font-size:11px;border-radius:7px}
+.track-shift output{min-width:52px;text-align:center;font-variant-numeric:tabular-nums}
+.key-saved{display:inline;color:#80e1be}

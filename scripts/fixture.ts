@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import ffmpeg from 'ffmpeg-static';
-export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer }; cors?: boolean; catalogSizes?: Partial<Record<'live' | 'vod' | 'series', number>>; videoSize?: string; videoBitrate?: string; videoDuration?: number; live?: boolean; audio?: 'aac' | 'ac3' | 'eac3' | 'mp2'; video?: 'h264' | 'hevc' | 'hevc10'; perConnectionBps?: number; oneStreamOnly?: boolean; uneven?: boolean; maxConnections?: number; icons?: boolean; extraChannels?: number; dubs?: boolean } = {}) {
+export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer }; cors?: boolean; catalogSizes?: Partial<Record<'live' | 'vod' | 'series', number>>; videoSize?: string; videoBitrate?: string; videoDuration?: number; live?: boolean; audio?: 'aac' | 'ac3' | 'eac3' | 'mp2'; video?: 'h264' | 'hevc' | 'hevc10'; perConnectionBps?: number; oneStreamOnly?: boolean; uneven?: boolean; maxConnections?: number; icons?: boolean; extraChannels?: number; dubs?: boolean; mkv?: boolean } = {}) {
   const directory = fs.mkdtempSync(path.join(tmpdir(), 'kiyi-fixture-'));
   const credentials = { username: randomBytes(12).toString('hex'), password: randomBytes(24).toString('hex') };
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `testsrc2=size=${options.videoSize || '640x360'}:rate=25`, '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', ...(options.dubs ? ['-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000', '-map', '0:v', '-map', '1:a', '-map', '2:a', '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=tur'] : []), '-t', String(options.videoDuration || 12), ...(options.video === 'hevc' || options.video === 'hevc10'
@@ -15,6 +15,21 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
       : ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'ultrafast', '-g', '50']), ...(options.videoBitrate ? ['-b:v', options.videoBitrate] : []), '-c:a', options.audio || 'aac', '-b:a', options.audio === 'mp2' ? '192k' : options.audio ? '384k' : '64k', '-movflags', '+faststart', path.join(directory, 'pattern.mp4')]);
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-i', path.join(directory, 'pattern.mp4'), '-c', 'copy', '-hls_time', '2', '-hls_list_size', '0', '-hls_segment_filename', path.join(directory, 'part%d.ts'), path.join(directory, 'pattern.m3u8')]);
   execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-i', path.join(directory, 'pattern.mp4'), '-c', 'copy', '-f', 'mpegts', path.join(directory, 'pattern.ts')]);
+  // Films the way multi-language releases come: Matroska with an AAC dub (English, 440 Hz, the default), a
+  // 5.1 E-AC-3 dub Chromium cannot decode (Turkish, 880 Hz, named) and two text subtitles, one named SDH.
+  // Episodes come with E-AC-3 only (German, 660 Hz), which Chromium used to play silent.
+  if (options.mkv) {
+    const subtitle = (name: string, lines: string[]) => { const file = path.join(directory, name); fs.writeFileSync(file, lines.join('\n')); return file; };
+    const en = subtitle('en.srt', ['1', '00:00:01,000 --> 00:00:04,000', 'Hello one', '', '2', '00:00:09,000 --> 00:00:12,000', 'Hello two', '', '3', '00:00:24,000 --> 00:00:27,000', 'Hello three', '']);
+    const tr = subtitle('tr.srt', ['1', '00:00:02,000 --> 00:00:05,000', 'Merhaba bir', '', '2', '00:00:10,000 --> 00:00:13,000', 'Çok güzel bir gün', '', '3', '00:00:25,000 --> 00:00:28,000', 'Merhaba üç', '']);
+    const picture = ['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=25'], tone = (hz: number) => ['-f', 'lavfi', '-i', `sine=frequency=${hz}:sample_rate=48000`], h264 = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '50'];
+    execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', ...picture, ...tone(440), ...tone(880), '-i', en, '-i', tr, '-t', '30', '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3', '-map', '4', ...h264,
+      '-c:a:0', 'aac', '-b:a:0', '64k', '-c:a:1', 'eac3', '-ac:a:1', '6', '-b:a:1', '384k', '-c:s', 'srt',
+      '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=tur', '-metadata:s:a:1', 'title=Dublaj', '-metadata:s:s:0', 'language=eng', '-metadata:s:s:0', 'title=SDH', '-metadata:s:s:1', 'language=tur',
+      '-disposition:a:0', 'default', '-disposition:a:1', '0', '-disposition:s:0', '0', '-disposition:s:1', '0', path.join(directory, 'film.mkv')]);
+    execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', ...picture, ...tone(660), '-t', '20', '-map', '0:v', '-map', '1:a', ...h264, '-c:a', 'eac3', '-b:a', '192k', '-metadata:s:a:0', 'language=ger', path.join(directory, 'dolby.mkv')]);
+  }
+  const vodExtension = options.mkv ? 'mkv' : 'mp4';
   // Poster pictures for the lists: every row points at one small PNG, except the second live
   // channel, whose address answers 404, so both the picture and its fallback can be checked.
   if (options.icons) execFileSync(ffmpeg!, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x3377cc:s=64x96', '-frames:v', '1', path.join(directory, 'icon.png')]);
@@ -50,10 +65,10 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
       if (!action) data = { user_info: { auth: 1, status: 'Active', exp_date: String(now + 86400), active_cons: '0', max_connections: String(maxConnections) } };
       else if (action.endsWith('_categories')) data = [{ category_id: '1', category_name: 'Test laboratuvarı' }, { category_id: '2', category_name: 'Boş kategori' }];
       else if (action === 'get_live_streams') data = url.searchParams.get('category_id') === '2' ? [] : !url.searchParams.has('category_id') && options.catalogSizes?.live ? largeCatalog('live', options.catalogSizes.live) : [{ stream_id: 1, name: 'Sentetik test yayını', category_id: '1', ...icon('1') }, { stream_id: 2, name: 'İstanbul test deseni', category_id: '1', ...icon('missing') }, ...Array.from({ length: options.extraChannels || 0 }, (_, i) => ({ stream_id: 101 + i, name: `Kanal ${i + 1}`, category_id: '1' }))];
-      else if (action === 'get_vod_streams') data = !url.searchParams.has('category_id') && options.catalogSizes?.vod ? largeCatalog('vod', options.catalogSizes.vod) : [{ stream_id: 3, name: 'Test filmi', category_id: '1', container_extension: 'mp4', ...icon('3') }];
+      else if (action === 'get_vod_streams') data = !url.searchParams.has('category_id') && options.catalogSizes?.vod ? largeCatalog('vod', options.catalogSizes.vod) : [{ stream_id: 3, name: 'Test filmi', category_id: '1', container_extension: vodExtension, ...icon('3') }];
       else if (action === 'get_series') data = !url.searchParams.has('category_id') && options.catalogSizes?.series ? largeCatalog('series', options.catalogSizes.series) : [{ series_id: 4, name: 'Test dizisi', category_id: '1', ...(options.icons ? { cover: `http://${req.headers.host}/icons/4.png` } : {}) }];
       else if (action === 'get_vod_info') data = { info: { name: 'Test filmi', plot: 'Bu video yalnızca otomatik olarak üretilmiş bir renk ve hareket desenidir.', genre: 'Teknik test', duration: '00:00:12', rating: '10' }, movie_data: { stream_id: 3 } };
-      else if (action === 'get_series_info') data = { info: { name: 'Test dizisi', plot: 'Sentetik bölümler.' }, episodes: { '1': [{ id: '5', title: 'Birinci test', episode_num: 1, season: 1, container_extension: 'mp4' }], '2': [{ id: '6', title: 'İkinci test', episode_num: 1, season: 2, container_extension: 'mp4' }] } };
+      else if (action === 'get_series_info') data = { info: { name: 'Test dizisi', plot: 'Sentetik bölümler.' }, episodes: { '1': [{ id: '5', title: 'Birinci test', episode_num: 1, season: 1, container_extension: vodExtension }], '2': [{ id: '6', title: 'İkinci test', episode_num: 1, season: 2, container_extension: vodExtension }] } };
       else if (action === 'get_short_epg') data = { epg_listings: [{ id: 1, title: b64('Şimdi: Görüntü testi'), description: b64('Yerel üretilen renk ve ses deseni.'), start_timestamp: now - 600, stop_timestamp: now + 1800 }, { id: 2, title: b64('Sırada: Ses testi'), description: '', start_timestamp: now + 1800, stop_timestamp: now + 3600 }] };
       else { res.statusCode = 400; data = { error: 'unsupported' }; }
       res.end(JSON.stringify(data)); return;
@@ -78,11 +93,11 @@ export async function createFixture(options: { tls?: { key: Buffer; cert: Buffer
       res.end(['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-TARGETDURATION:3', `#EXT-X-MEDIA-SEQUENCE:${first}`, ...shown.flatMap(part => ['#EXTINF:2.000000,', part])].join('\n') + '\n');
       return;
     }
-    const name = base.endsWith('.m3u8') ? 'pattern.m3u8' : /^part\d+\.ts$/.test(base) ? base : base.endsWith('.ts') ? 'pattern.ts' : 'pattern.mp4';
+    const name = base.endsWith('.m3u8') ? 'pattern.m3u8' : /^part\d+\.ts$/.test(base) ? base : base.endsWith('.ts') ? 'pattern.ts' : base.endsWith('.mkv') && options.mkv ? (parts[1] === 'series' ? 'dolby.mkv' : 'film.mkv') : 'pattern.mp4';
     const file = path.join(directory, name);
     if (!fs.existsSync(file)) { res.writeHead(404).end(); return; }
     const size = fs.statSync(file).size;
-    res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : name.endsWith('.ts') ? 'video/mp2t' : 'video/mp4');
+    res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : name.endsWith('.ts') ? 'video/mp2t' : name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4');
     res.setHeader('Accept-Ranges', 'bytes');
     const range = req.headers.range?.match(/^bytes=(\d+)-(\d*)$/);
     const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), size - 1) : size - 1;

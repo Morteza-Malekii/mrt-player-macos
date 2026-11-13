@@ -2,7 +2,7 @@
 
 A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-![Version](https://img.shields.io/badge/version-0.2.1-blue)
+![Version](https://img.shields.io/badge/version-0.2.3-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
@@ -35,7 +35,7 @@ The application interface is currently in **Turkish**. This repository contains 
 | Recording | Record any live channel from under the player (unlimited or for a set time), or plan a recording from the programme guide or by hand; plain `.ts` and HLS-only channels both work, dropped connections are picked up again, up to 3 channels at once; each recording is turned into an MP4 with a bundled FFmpeg (no re-encoding of the picture) and plays from the Kayıtlar list |
 | Personal library | Favorites, recent viewing history, custom category and item order, and local preferences |
 | List management | Visible, PIN-locked, or hidden categories across live TV, movies, and series |
-| Audio and subtitles | Select available audio tracks, remember the preferred language, and load local `.srt` or `.vtt` subtitles |
+| Audio and subtitles | List every audio track and subtitle inside the file, play AC-3/E-AC-3/DTS dubs by converting them to AAC, show the file's text subtitles, remember the preferred language, load local `.srt` or `.vtt` subtitles, and search OpenSubtitles and SubDL for English, Persian and Turkish ones |
 | Artwork | Optional provider logos and posters, with fallback tiles when images are unavailable |
 | Playback diagnostics | Resolution, buffered duration, dropped frames, startup timing, interruptions, and media transfer statistics |
 | Desktop controls | Keyboard navigation, fullscreen, volume, mute, and a resizable desktop window |
@@ -116,11 +116,15 @@ One 4–8 digit PIN unlocks the locked lists for the current session. Relock the
 
 For a movie or episode, open **Ses ve altyazı** (Audio and subtitles) in the player's lower-right corner:
 
-- Choose an available audio track. The selected language is remembered for subsequent movies and episodes that contain a matching track.
+- Choose any audio track in the file. Tracks are named by language plus the file's own track name and surround layout (for example `İspanyolca · Latin American`, `Fransızca · Canadian · 5.1`). The selected language is remembered for subsequent movies and episodes that contain a matching track.
+- AC-3, E-AC-3 and DTS dubs, which Chromium cannot decode, are played through the bundled FFmpeg: the picture is copied unchanged and only the chosen dub is converted to AAC. A film whose only sound is one of these (previously silent) is converted automatically.
+- Choose a subtitle inside the file (Matroska text subtitles: SRT, ASS/SSA, WebVTT). Its lines are read from the same bytes the player downloads, so they appear as the film is loaded.
 - Load a local `.srt` or `.vtt` file. Supported text encodings include UTF-8, UTF-16 with a BOM, Turkish Windows-1254, and Persian Windows-1256; legacy encoding detection is heuristic.
-- Select **Kapalı** (Off) to hide the loaded subtitles.
+- Select **İnternette altyazı ara** (Search subtitles on the internet) when the file has none. The app asks OpenSubtitles and SubDL for English, Persian and Turkish subtitles and lists them in that order. A subtitle that OpenSubtitles recorded for exactly this file (matched by the file's fingerprint) is marked **Bu dosyaya uygun** and listed first in its language; the rest are ordered by how closely their release name matches. Picking one downloads it and shows it like a local file. It needs a free API key from either service, entered once under **Ayarlar → Altyazı arama**.
+- Shift a loaded subtitle with the **−0,5 sn / +0,5 sn** buttons when it runs early or late. A subtitle that ends well after the film does is flagged as probably made for another cut.
+- Select **Kapalı** (Off) to hide subtitles.
 
-External subtitles apply only to the current playback. Embedded subtitles are not exposed by the current Chromium playback path. AC-3, E-AC-3, and DTS audio tracks are not available in the audio menu. The audio/subtitle menu is not shown during live TV.
+The file's track list is read for Matroska (`.mkv`) and MP4 files. Picture-based subtitles (PGS, VobSub) and subtitles inside MP4 files are listed but cannot be shown. External subtitles apply only to the current playback. The audio/subtitle menu is not shown during live TV.
 
 ### Keyboard controls
 
@@ -144,7 +148,8 @@ MRT-Player runs locally and does not require a hosted MRT-Player backend.
 - **Local library:** favorites, recent items, preferences, and list configuration are stored in the application's local data directory. These library records are not encrypted as a whole.
 - **Renderer isolation:** account-bearing media URLs remain in the main process; playback uses opaque `kiyi://media/...` addresses. Optional artwork uses `kiyi://image/...` addresses.
 - **Artwork off by default:** enabling posters/logos contacts the image URLs supplied by the provider. These may point to third-party CDNs or image services, which receive your image requests and IP address.
-- **Network requests:** provider API calls, media requests and redirects, and optional provider-supplied artwork. The app has no telemetry, analytics, remote error reporting, or application log files.
+- **Subtitle search:** only when you press the search button, the title, year, film-database numbers and a fingerprint of the file (a number computed from its size and first and last 64 KB) are sent to OpenSubtitles and SubDL, which also see your IP address. The IPTV address and account are never sent. The services' keys are encrypted with `safeStorage` and never reach the renderer.
+- **Network requests:** provider API calls, media requests and redirects, optional provider-supplied artwork, and the subtitle search above. The app has no telemetry, analytics, remote error reporting, or application log files.
 - **Desktop boundary:** the renderer is sandboxed, uses context isolation, has no Node integration, and calls a restricted preload bridge. A Content Security Policy restricts resource loading.
 
 A list PIN is a household privacy feature. It does not protect the library from someone who can read or modify the local files. Only a salted PBKDF2-SHA256 PIN hash is stored.
@@ -167,7 +172,7 @@ Electron main process
 
 | Path | Responsibility |
 | --- | --- |
-| `src/core/` | Xtream models and API helpers, EPG, library normalization, ordering, PINs, audio/subtitle helpers |
+| `src/core/` | Xtream models and API helpers, EPG, library normalization, ordering, PINs, audio/subtitle helpers, subtitle search ranking |
 | `src/runtime/` | Session actions, HTTP transport, local storage |
 | `src/platform/mac/` | Electron main/preload processes, media and image gateways, playback adapter |
 | `src/ui/` | React screens, player controls, list management, styles |
@@ -204,6 +209,7 @@ Additional checks exercise the real Electron application and specific playback b
 | `npm run test:lock` | PIN, visibility, and relocking flows |
 | `npm run test:order` | Custom ordering and persistence |
 | `npm run test:tracks` | Audio selection and external subtitles |
+| `npm run test:embedded` | The file's own dubs and subtitles, AC-3/E-AC-3 conversion, seeking while converting |
 | `npm run test:posters` | Optional images, fallback tiles, and privacy defaults |
 | `npm run test:packaged` / `npm run test:4k:packaged` | Existing packaged `.app` verification |
 
@@ -233,11 +239,11 @@ Additional project documents are currently in Turkish:
 
 - Downloads run one at a time, and an unfinished one is cancelled when you lock the session (the account address is never stored, so it cannot continue after a restart). Finished downloads are remembered per account, play from the disk inside the app, and never enter Recent; playback from a download does not resume from where you stopped.
 - Recordings use their own connection to the provider, so the account must allow another simultaneous stream. Planned recordings only run while the app is open and the Mac is awake (the app keeps the Mac from being suspended while one is running or planned). Signing out (or quitting) ends a running recording; the raw `.ts` is kept and turned into an MP4 at the next sign-in. HLS channels that are encrypted or use fragmented MP4 cannot be recorded.
-- Recordings are converted with the FFmpeg binary from the `ffmpeg-static` package (copied to `dist/ffmpeg` by `npm run build` and kept outside the app archive when packaged); its licence is copied next to it as `ffmpeg.LICENSE` and applies to the bundled binary.
+- Recordings and AC-3/E-AC-3/DTS dubs are converted with the FFmpeg binary from the `ffmpeg-static` package (copied to `dist/ffmpeg` by `npm run build` and kept outside the app archive when packaged); its licence is copied next to it as `ffmpeg.LICENSE` and applies to the bundled binary.
 - The packaged target is macOS Apple Silicon, with ad hoc signing and no notarization.
 - The UI is currently Turkish; selecting an audio language does not change the interface language.
-- Playback depends on the stream container, codec, provider behavior, and account connection limits. There is no bundled transcoder.
-- Embedded subtitles, subtitle timing offsets, and automatically loading provider subtitle URLs are not supported.
+- Playback depends on the stream container, codec, provider behavior, and account connection limits. Only audio is converted; a picture codec Chromium cannot play (MPEG-2, VC-1) is not.
+- Picture-based subtitles (PGS, VobSub), subtitles inside MP4 files, and automatically loading provider subtitle URLs are not supported. Subtitles found on the internet are only as good as the services' data: the fingerprint match works when the provider serves the original release file, and a provider that re-encodes its films gets title-based matches only. SubDL and OpenSubtitles daily limits apply; the free OpenSubtitles tier allows few downloads a day, more with a signed-in account. A file subtitle appears for the part of the film that has been loaded.
 - HLS movie audio-track behavior and real-provider audio switching have not been established by the local fixtures.
 - Ordering uses buttons rather than drag-and-drop. All content and Recent are not manually reorderable; stored custom orders are bounded.
 - Some older series-episode favorite/history entries lack a category ID, so category hiding/locking cannot reliably filter those legacy records.
@@ -250,8 +256,8 @@ Additional project documents are currently in Turkish:
 | Sign-in fails | Server address, account credentials, account status, TLS certificate validity, and explicit HTTP confirmation if needed |
 | A channel does not start | Provider availability, account connection limit, and the stream's codec/container |
 | Frequent buffering | Open **Akış bilgisi** (Stream information) to inspect buffer, dropped frames, and interruptions; check network and provider throughput |
-| An audio language is missing | The stream may omit it or encode it as unsupported AC-3, E-AC-3, or DTS |
-| Subtitles do not appear | Load an external `.srt`/`.vtt`; embedded subtitles are unsupported |
+| An audio language is missing | The file may not contain it; containers other than MKV/MP4 only show what Chromium can decode |
+| Subtitles do not appear | A picture-based (PGS/VobSub) or MP4 subtitle cannot be shown; load an external `.srt`/`.vtt` |
 | The saved account cannot be opened after an update | Check Keychain access or re-enter the account through the login screen |
 | A category or favorite is missing | Check list visibility and PIN state in Settings → Manage lists |
 | `shared:check` fails | Confirm the sibling checkout exists; platform code currently differs, as documented above |

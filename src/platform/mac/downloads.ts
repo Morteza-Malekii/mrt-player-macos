@@ -9,6 +9,8 @@ import { atomicWrite } from '../../runtime/storage';
 import { AppError } from '../../core/errors';
 import type { Download, DownloadState } from '../../core/models';
 import type { DownloadHost } from '../../runtime/session';
+import { observed } from './inspector';
+import type { Sink } from './container';
 interface Job { info: Download; url: string; extension: string; part: string; target: string; response?: IncomingMessage; sampleAt: number; sampleBytes: number; timer?: ReturnType<typeof setTimeout>; tries: number; startedWith: number }
 const LIVE: DownloadState[] = ['queued', 'active', 'waiting'];
 // When the viewer asks for it, an interrupted transfer starts again on its own: soon at first (most
@@ -101,8 +103,13 @@ export class DownloadManager implements DownloadHost {
   isTaken = (target: string) => fs.existsSync(target) || fs.existsSync(`${target}.part`) || [...this.jobs.values()].some(job => job.target === target);
   open = (id: string): string => {
     if (this.jobs.get(id)?.info.state !== 'done') throw new AppError('NOT_FOUND', 'Dosya bulunamadı. Taşınmış veya silinmiş olabilir.');
+    this.inspector?.watch(`local/${id}`);
     return `kiyi://local/${id}`;
   };
+  // A downloaded film is read for its dubs and subtitles the same way a provider's is (inspector.ts), and
+  // the converter reads it straight from disk.
+  inspector?: { watch(key: string): void; reader(key: string, offset: number): Sink | undefined };
+  file = (id: string): string | undefined => { const job = this.jobs.get(id); return job?.info.state === 'done' ? job.target : undefined; };
   trash = async (id: string) => {
     const job = this.jobs.get(id);
     if (!job || job.info.state !== 'done') return;
@@ -130,7 +137,7 @@ export class DownloadManager implements DownloadHost {
     if (incoming.method === 'HEAD') return new Response(null, { status, headers });
     const stream = fs.createReadStream(job.target, { start, end });
     incoming.signal.addEventListener('abort', () => stream.destroy(), { once: true });
-    return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status, headers });
+    return new Response(observed(Readable.toWeb(stream) as ReadableStream<Uint8Array>, this.inspector?.reader(`local/${job.info.id}`, start)), { status, headers });
   };
   list = (): Download[] => {
     const now = Date.now();

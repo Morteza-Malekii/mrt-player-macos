@@ -480,6 +480,74 @@
   testleri yeniden koşulmadı; `release/` altındaki `.app` bu özellik olmadan eski sürümde
   duruyor, `npm run package` ile yeniden üretilmeli.
 
+## Dosyanın içindeki bütün dublajlar ve altyazılar · 0.2.2
+
+- Kullanıcı bildirimi: başka bir oynatıcı aynı filmde 9 dublaj ve 13 altyazı gösterirken bizim
+  menü "Bu dosyada seçilebilecek tek ses var" ve "gömülü altyazılar gösterilemez" diyordu. Yukarıdaki
+  "Ses ve altyazı" bölümünün bilinen sınırları (1) ve (2) buydu.
+- Bu Electron'da (44.4.3, Chromium 152) yeniden ölçüldü: `MediaSource.isTypeSupported` ve
+  `canPlayType` için `ec-3`, `ac-3`, `dtsc` hâlâ hayır; AAC, H.264, HEVC evet. Matroska'da
+  yalnızca E-AC-3/AC-3 ses varsa `audioTracks` **boş** geliyor ve film sessiz oynuyor; ilk parça
+  AC-3, diğerleri AAC olan `.mkv`'de de liste boş kaldı. Yani kullanıcının dosyasında dublajların
+  görünmemesinin ve bazı filmlerin sessiz kalmasının sebebi aynı: Dolby/DTS çözücüsü yok.
+- Çözüm üç parça:
+  - **Dosyayı okumak** (`container.ts`, `inspector.ts`): oynatıcıya giden baytlar `MediaGateway`
+    ve indirilen dosya sunucusunda bir kopyayla okuyucuya da veriliyor. Matroska başlığından ve
+    MP4 `moov` kutusundan bütün izler (dil, `LanguageBCP47`, ad, codec, kanal, varsayılan, zorunlu)
+    okunuyor; Matroska gövdesindeki metin altyazılar (SRT, ASS/SSA, WebVTT) zamanıyla toplanıyor.
+    Eski mkvmerge'in zlib/başlık-ayıklama sıkıştırması da çözülüyor, ama elde böyle bir dosya
+    üretecek araç olmadığından bu yol test edilmedi. İkinci bağlantı açılmıyor, hiçbir bayt iki
+    kez indirilmiyor. Canlı yayın okunmuyor (yalnızca film/bölüm adresi izleniyor).
+  - **Sesi çevirmek** (`remux.ts`): Chromium'un çözemediği dublaj seçilince paketli FFmpeg görüntüyü
+    kopyalıyor, yalnızca o sesi AAC'ye çeviriyor ve parçalı MP4 olarak veriyor; sayfa bunu Media
+    Source Extensions ile oynatıyor. FFmpeg sağlayıcıya doğrudan değil, yalnızca geçidin token'larını
+    bilen bir loopback adresinden (Origin taşıyan istek reddedilir) `MediaGateway` üzerinden
+    bağlanıyor: tek bağlantılı hesap kuralı, paralel şeritler ve altyazı okuyucusu ona da uygulanıyor.
+    Bir dosya için yeni istek bir öncekini kapatıyor (FFmpeg arama yaparken yeni bağlantıyı eskisini
+    kapatmadan açar; tek bağlantılı hesapta bu ikinci bağlantı reddedilirdi).
+  - **Sayfa** (`adapter.ts` `remux()`, `Player.tsx`): aynı başlığın iki "rotası" var (düz dosya,
+    dönüştürücü). Başlangıç dublajı: son seçilen dil, yoksa dosyanın varsayılanı; Chromium onu
+    çalamıyorsa dönüştürücü kendiliğinden devreye giriyor. AAC bir dublaja dönülünce düz dosyaya
+    geri geçiliyor.
+- Ölçülen ve buna göre seçilen ayrıntılar:
+  - `-ss` ile ileri bir noktadan başlayan parçalı MP4'te FFmpeg zamanı sıfırdan başlatıyor (tamponda
+    `[0, 14]`, oysa film 6. saniyeden başlıyordu). `-copyts` + `-avoid_negative_ts disabled` +
+    `frag_discont` ile dosyanın kendi zamanı korunuyor (`[6, 20]`), böylece zaman çizgisi, ilerleme
+    çubuğu ve kaldığı yer kayıtsız şartsız aynı. Sıfırdan başlarken bu bayraklar kullanılmıyor: AAC
+    kodlayıcının ön dolgusu ilk ses zamanını negatife düşürüp bozuyordu (ölçüldü).
+  - Chromium MSE, FFmpeg'in Dolby/DTS'ten ürettiği "5.1(side)" düzenli 6 kanallı AAC'yi
+    **ayrıştıramıyor** (`CHUNK_DEMUXER_ERROR_APPEND_FAILED`), standart 5.1'i (`-ac 6`) ve stereoyu
+    kabul ediyor. Bu e2e testinde yakalandı; 6+ kanal standart 5.1'e, 3–5 kanal stereoya çevriliyor.
+  - MSE codec dizesi için tür yetiyor: Main10 HEVC, `hvc1.1.6.L93.B0` (Main) bildirilerek sorunsuz
+    oynadı; H.264 bildirip HEVC vermek ise hata. Görüntü türü dosyanın başlığından alınıyor.
+  - Matroska'da FFmpeg akış kimliği (`0:i:N`) her zaman 0; iz seçimi `0:a:N` (ses sırası) ile yapılıyor.
+    Chromium'un `audioTracks[].id` değeri dosyadaki sıra + 1 (MKV ve MP4'te ölçüldü); düz dosyadaki
+    karşılık bununla ve dilin eşleşmesiyle bulunuyor, bulunamazsa dönüştürücü kullanılıyor.
+  - FFmpeg her Matroska kümesinin başına CRC-32 yazıyor; ortadan başlayan okuyucu ilk denemede
+    hiç küme bulamadı (birim testinde yakalandı, düzeltildi).
+- Birim testleri (`tests/container.test.ts`, 9 test, filmler testte FFmpeg ile üretiliyor):
+  Matroska iz listesi (5 iz, ad, varsayılan, zorunlu, 5.1); SRT ve ASS satırları zamanıyla ve
+  `{\an8}`/`{\i1}` olmadan; dosyanın %60'ından başlayan okuma doğru satırları buluyor, iz listesi
+  olmadan hiçbir şey uydurmuyor; MP4 başlığı başta da sonda da okunuyor, AC-3 ve `tx3g` listeleniyor,
+  görüntü verisinin ortası başlık sanılmıyor; ASS temizleme; izleyici (izlenmeyen dosya okunmaz,
+  tekrar okunan satır bir kez); `MediaGateway` üzerinden oynatıcıya giden dosya bayt bayt aynı;
+  iz adları; dublaj eşlemesi; FFmpeg komutu.
+- `npm run test:embedded` gerçek Electron penceresinde (MKV: AAC İngilizce 440 Hz, E-AC-3 5.1
+  Türkçe "Dublaj" 880 Hz, SDH adlı İngilizce ve Türkçe SRT): dört iz adlarıyla listeleniyor
+  (`İngilizce`, `Türkçe · Dublaj · 5.1`, `İngilizce · SDH`, `Türkçe`); E-AC-3 seçilince dönüştürücü
+  filmin bulunduğu yerden devam ediyor, tampon oradan başlıyor ve Web Audio çözümleyicisinde **880 Hz**
+  okunuyor (yani gerçekten Türkçe dublaj çalıyor); dönüşümün başladığı yerin gerisine sarınca yeni
+  dönüşüm başlıyor, yine 880 Hz; dosyadaki Türkçe ve İngilizce altyazı doğru saniyede doğru metinle
+  çıkıyor; İngilizceye dönünce düz dosyaya geçiliyor; son seçilen Türkçe yeni pencerede
+  kendiliğinden dönüştürücüyle başlıyor; yalnızca E-AC-3 sesli bölüm (eskiden sessiz) dönüştürülüp
+  **660 Hz** ile çalıyor.
+- Bilinen sınırlar: (1) Resim altyazılar (PGS, VobSub) ve MP4 içindeki altyazılar listeleniyor ama
+  gösterilemiyor. (2) Dosyadaki altyazı, filmin okunmuş kısmı için var; çok ileri sarınca o kısım
+  okununca gelir. (3) Yalnızca ses çevriliyor; Chromium'un çözemediği görüntü (MPEG-2, VC-1) yine
+  oynamaz. (4) Dönüştürülen ses en fazla 5.1. (5) Gerçek bir sağlayıcıda, özellikle tek bağlantılı
+  hesapta ve 4K dosyada dönüştürücünün davranışı denenmedi; yalnızca yerel fixture ile doğrulandı.
+  (6) Altyazı tercihi hatırlanmıyor (her film "Kapalı" başlar). (7) webOS deposuna dokunulmadı.
+
 ## Dış doğrulama gerektiren sınır
 
 Fiziksel LG TV veya çalışan LG simülatörü verilmedi. Dolayısıyla `.ipk` kurulum,
@@ -490,3 +558,44 @@ ve yetkili hesapla denenebilir. Kodda gerçek hesap verisi kullanılmadı.
 
 Test videoları ffmpeg ile yerelde üretilen testsrc2 + sinüs dalgasıdır.
 Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanmaz.
+
+## İnternetten altyazı arama · 0.2.3
+
+- İstek: altyazısı olmayan filmde menüden düğmeye basılınca OpenSubtitles ve SubDL taranıyor;
+  İngilizce, Farsça, Türkçe sırasıyla listeleniyor; seçilen altyazı dosya gibi yükleniyor.
+- Parçalar: `core/subtitles.ts` (ad temizleme, sıralama, süre uyarısı; saf fonksiyonlar),
+  `platform/mac/subtitles.ts` (iki servis, dosya parmak izi, anahtar saklama), `platform/mac/zip.ts`
+  (SubDL zip gönderiyor), `ui/SubtitleSearch.tsx`, `ui/SubtitleKeys.tsx` (Ayarlar). Anahtarlar,
+  servis adresleri ve geçici indirme bağlantıları ana süreçte kalıyor; sayfa yalnızca opak kimlik görüyor.
+- Eşleşme üç katman: (1) **dosya parmak izi** — OpenSubtitles `moviehash`'i (boyut + ilk ve son 64 KB'ın
+  64 bitlik sözcük toplamı). Oynatıcının kendi bağlantısına dokunmadan, `MediaGateway.serve(..., observe=false)`
+  ile iki küçük bayt aralığı isteniyor; sunucu `206` yerine `200` dönerse (aralığı yok sayıp bütün
+  filmi göndermek) hiç okunmuyor. İndirilmiş dosya diskten okunuyor. (2) **film numarası** — Xtream
+  `get_vod_info`/`get_series_info` içindeki `tmdb_id` (yoksa `imdb_id`), dizide dizinin numarası +
+  sezon + bölüm. Numara yoksa ad ve yıl. (3) **süre kontrolü** — son satır filmin süresini %3'ten fazla
+  aşıyorsa uyarı. Parmak izi araması numaralı aramadan ayrı çalışıyor: sağlayıcının yanlış numarası
+  parmak izini süzmesin diye.
+- Gizlilik: yalnızca düğmeye basınca; giden veri ad, yıl, film numaraları, parmak izi. IPTV adresi ve
+  hesap gitmiyor. `User-Agent` bilerek genel (`SubtitleClient v1`): OpenSubtitles anahtarı kayıt
+  sırasında verilen uygulama adına bağlıyor ama başlığın var olmasına bakıyor; sorun çıkarsa
+  `platform/mac/subtitles.ts` içindeki `AGENT` değiştirilir.
+- Birim testleri (`tests/subtitles.test.ts`, 7 test): ad ayrıştırma (`TR | The Matrix (1999) 4K`,
+  `S02E05`, `3x07`; yılsız `Blade Runner 2049` ve `Wonder Woman 1984` addan kırpılmıyor — bu test
+  yazılırken gerçek bir hata yakalandı); sıralama (dil sırası, parmak izi önde, tekrar tekilleştirme,
+  dil başına üst sınır); süre uyarısı; parmak izi aritmetiği (64 bit taşma dahil); zip okuma (saklı ve
+  deflate, `__MACOSX` atlanıyor, sezon paketinde bölüm seçimi); iki sahte servise karşı bütün akış
+  (parmak izi + numara aramaları, başlıklar ve sorgu parametreleri, iki servisin birleşik sıralaması,
+  başka sunucuya giden bağlantı eleniyor, anahtar sayfaya sızmıyor, indirme ve zip açma); anahtar yokken
+  açıklayıcı hata, bir servisin 403'ü diğerinin sonucunu saklamıyor, anahtar silme.
+- `npm run test:tracks` gerçek pencerede: zamanlama düğmeleri satırları birlikte kaydırıyor (+1,0 sn, geri 0,0),
+  anahtarsız profilde arama düğmesi "API anahtarı" gerektiğini söylüyor ve dışarı hiçbir şey gitmiyor,
+  önceki altyazı seçili kalıyor.
+- Canlı servis denemesi (2026-11-13, **geçersiz anahtarla**, hiçbir kullanıcı verisi gitmeden): iki
+  servis de Cloudflare sınavı çıkarmadan JSON `403` döndü (OpenSubtitles `You cannot consume this
+  service`, SubDL `not_authorized`); uygulama bunu "API anahtarı reddedildi" olarak gösteriyor.
+- **Doğrulanmadı:** gerçek bir anahtarla gerçek sonuçlar. SubDL'in yanıt alan adları (`release_name`,
+  `language`, `url`, `hi`, `episode`, `full_season`) ve OpenSubtitles'in `moviehash_match` alanı
+  kamuya açık belge ve Bazarr'ın çalışan sağlayıcı koduna göre yazıldı, canlı yanıtla sınanmadı; kod
+  alanlar eksikse o sonucu atlıyor, çökmüyor. Parmak izinin IPTV sağlayıcısı filmi yeniden
+  sıkıştırdıysa eşleşmeyeceği de beklenen bir sınır. OpenSubtitles ücretsiz indirme hakkının
+  büyüklüğü kaynaklarda 5 ile 200 arasında değişiyor (anahtarsız IP başına günde 5); hesap girilirse artar.

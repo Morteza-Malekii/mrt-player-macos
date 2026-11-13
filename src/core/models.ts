@@ -3,12 +3,38 @@ export interface Credentials { server: string; username: string; password: strin
 export interface Login extends Credentials { remember: boolean; passphrase?: string; allowHttp: boolean }
 export interface Account { profile: string; expires?: number; connections: number; maxConnections: number }
 export interface Category { id: string; name: string }
-export interface Item { id: string; kind: Kind; name: string; categoryId: string; icon?: string; extension?: string; rating?: string; isEpisode?: boolean }
+// An episode also carries what a subtitle search needs and its own name does not say: the series' title and
+// id, and the season and episode numbers. Nothing here is a provider address.
+export interface Item { id: string; kind: Kind; name: string; categoryId: string; icon?: string; extension?: string; rating?: string; isEpisode?: boolean; series?: string; seriesId?: string; season?: number; episode?: number }
 export interface Programme { id: string; title: string; description: string; start: number; end: number }
 export interface Episode extends Item { season: number; episode: number; plot?: string; duration?: string }
-export interface Detail { title: string; plot: string; genre: string; cast: string; director: string; year: string; duration: string; rating: string; extension?: string; episodes: Episode[] }
-export interface Playback { url: string; format: 'hls' | 'file' | 'ts'; live: boolean; engine?: 'js'; buffer?: Buffering; local?: boolean }
+// `tmdb` and `imdb` are the film's numbers at the two big film databases, when the provider knows them.
+export interface Detail { tmdb?: string; imdb?: string; title: string; plot: string; genre: string; cast: string; director: string; year: string; duration: string; rating: string; extension?: string; episodes: Episode[] }
+// `at` is where this route starts (seconds), when the player moves a title to another route mid-way.
+// `remux` plays the title through the bundled converter: the picture as it is, the chosen dub (`audio`,
+// its place among the file's dubs) turned into AAC, because Chromium cannot decode AC-3, E-AC-3 or DTS.
+export interface Playback { url: string; format: 'hls' | 'file' | 'ts'; live: boolean; engine?: 'js'; buffer?: Buffering; local?: boolean; at?: number; remux?: { audio: number; video: VideoFamily; duration: number } }
+export type VideoFamily = 'avc' | 'hevc' | 'av1' | 'vp9';
+// What a film's own file holds, read from its header as the player loads it (Matroska and MP4). `id` is the
+// track number, `index` the track's place among all tracks, `order` its place among tracks of its kind.
+// `text` subtitles are lifted out of the file as it plays; picture-based ones (PGS, VobSub) cannot be shown.
+export interface MediaTrack { id: number; index: number; order: number; kind: 'audio' | 'subtitle'; codec: string; language: string; name: string; channels?: number; default: boolean; forced: boolean; text: boolean }
+// `video` is set when the picture can go through the converter unchanged (H.264, HEVC, AV1, VP9).
+export interface MediaTracks { format: 'matroska' | 'mp4' | 'other'; duration: number; video?: VideoFamily; tracks: MediaTrack[] }
+export interface CueBatch { cues: Array<{ start: number; end: number; text: string }>; next: number }
 export type Buffering = 'normal' | 'large';
+// Subtitles from the internet (platform/mac/subtitles.ts). The page asks with the item it is playing and gets a
+// ranked list back; it never sees a provider's address or key. `hash` marks a subtitle that the service says was
+// made for exactly this file (matched by the file's fingerprint), `fps` the frame rate it was timed for.
+export type SubtitleLanguage = 'en' | 'fa' | 'tr';
+export interface SubtitleHit { id: string; provider: 'opensubtitles' | 'subdl'; language: SubtitleLanguage; release: string; hash: boolean; downloads: number; hearingImpaired: boolean; trusted: boolean; fps?: number }
+export interface SubtitleSearchResult { hits: SubtitleHit[]; notes: string[] }
+// The subtitle file itself, as base64, so it crosses the bridge as plain text and the page decodes it the way it decodes a file the viewer picked.
+export interface SubtitleFile { name: string; data: string }
+// Which services have a key saved. The keys themselves never leave the privileged process.
+export interface SubtitleKeys { opensubtitles: boolean; opensubtitlesLogin: boolean; subdl: boolean }
+export interface SubtitleKeyValues { opensubtitlesKey?: string; opensubtitlesUser?: string; opensubtitlesPassword?: string; subdlKey?: string }
+export interface SubtitleQuery { title: string; year?: number; season?: number; episode?: number; tmdb?: number; imdb?: number; source?: string; hint: string }
 // `audio` is the language ('tr', 'fa') of the dub the viewer chose last; a film or episode that has a
 // track in it starts on that one. Absent until a choice is made, then the file's own default holds.
 export interface Preferences { volume: number; muted: boolean; resume: boolean; posters: boolean; autoRetry: boolean; audio?: string }
@@ -39,7 +65,7 @@ export interface Download { id: string; source?: string; name: string; state: Do
 // turned into an MP4; a finished one is handed to the downloads list (`fileId`), which plays and removes it.
 export type RecordingState = 'scheduled' | 'recording' | 'converting' | 'done' | 'failed' | 'missed';
 export interface Recording { id: string; streamId: string; channel: string; name: string; state: RecordingState; start?: number; end?: number; startedAt?: number; bytes: number; error?: string; fileId?: string; hasFile?: boolean }
-export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats' | 'download' | 'downloads' | 'cancelDownload' | 'retryDownload' | 'removeDownload' | 'revealDownload' | 'playDownload' | 'trashDownload' | 'downloadSize' | 'downloadSettings' | 'record' | 'recordSchedule' | 'recordings' | 'stopRecording' | 'removeRecording' | 'retryRecording' | 'revealRecording';
+export type Action = 'status' | 'login' | 'unlock' | 'logout' | 'categories' | 'items' | 'epg' | 'detail' | 'play' | 'stop' | 'library' | 'saveLibrary' | 'heartbeat' | 'mediaStats' | 'download' | 'downloads' | 'cancelDownload' | 'retryDownload' | 'removeDownload' | 'revealDownload' | 'playDownload' | 'trashDownload' | 'downloadSize' | 'downloadSettings' | 'record' | 'recordSchedule' | 'recordings' | 'stopRecording' | 'removeRecording' | 'retryRecording' | 'revealRecording' | 'tracks' | 'subtitleCues' | 'subtitleSearch' | 'subtitleGet' | 'subtitleKeys' | 'saveSubtitleKeys';
 export interface Bridge { call<T>(action: Action, payload?: unknown): Promise<T> }
 export interface Platform extends Bridge { type: 'mac' | 'tv' | 'preview'; attach(video: HTMLVideoElement, playback: Playback, onError: (message: string) => void): () => void; exit(): void }
 export const DEFAULT_LIBRARY: Library = { favorites: [], recent: [], preferences: { volume: 0.8, muted: false, resume: true, posters: false, autoRetry: false }, locks: { categories: [] }, hidden: [], order: { categories: {}, items: {} } };

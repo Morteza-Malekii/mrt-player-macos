@@ -110,6 +110,19 @@ try {
       await expect(menu(page).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
       expect((await cues(page))[0].count).toBe(1);
 
+      // The timing buttons move every line together (the line shown at 2 s is shown 1 s later after +0,5 twice).
+      await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye geciktir' }).click();
+      await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye geciktir' }).click();
+      await expect(menu(page).getByRole('status').filter({ hasText: '+1,0 sn' }).or(menu(page).locator('output', { hasText: '+1,0 sn' }))).toBeVisible();
+      await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye öne al' }).click();
+      await menu(page).getByRole('button', { name: 'Altyazıyı 0,5 saniye öne al' }).click();
+      await expect(menu(page).locator('output')).toHaveText('0,0 sn');
+
+      // The internet search: this profile has no key saved, so the button explains what is needed and nothing is sent out.
+      await menu(page).getByRole('button', { name: 'İnternette altyazı ara' }).click();
+      await expect(menu(page).getByRole('alert')).toContainText('API anahtarı');
+      await expect(menu(page).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
+
       // Escape closes the menu first and only then the player.
       await page.keyboard.press('Escape');
       await expect(menu(page)).toHaveCount(0);
@@ -140,7 +153,7 @@ try {
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
       await page.getByRole('button', { name: 'Diziler', exact: true }).click();
       await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
-      await page.getByRole('button', { name: /Birinci test/ }).click();
+      await page.getByRole('button', { name: /^\d+ Birinci test/ }).click();
       await playing(page);
       await expect.poll(async () => (await probe(page)).enabled).toEqual([true, false]);
       // Live TV has no dubs or subtitles to choose, so it has no such button.

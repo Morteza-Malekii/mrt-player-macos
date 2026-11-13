@@ -1,6 +1,8 @@
 import type { Account, Category, Credentials, Detail, Episode, Item, Kind } from './models';
 import { AppError, id, invalid, object, text } from './errors';
 import { normalizeEpg } from './epg';
+// A film database number, or nothing when the provider sends none, zero or something that is not a number.
+const digits = (value: unknown) => { const s = text(value, 12); return /^\d{1,10}$/.test(s) && Number(s) > 0 ? s : undefined; };
 export interface Transport { json(url: string): Promise<unknown> }
 // A poster address from a catalogue row (`stream_icon` on live and film rows, `cover` on
 // series rows). Only a plain absolute http(s) address is kept, with no login in it: the
@@ -60,7 +62,7 @@ export class Xtream {
       });
     });
     episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
-    return { title: text(info.name ?? movie.name, 250), plot: text(info.plot ?? info.description, 12000), genre: text(info.genre), cast: text(info.cast), director: text(info.director), year: text(info.releasedate ?? info.releaseDate ?? info.year), duration: text(info.duration), rating: text(info.rating), extension: movie.container_extension ? this.extension(movie.container_extension) : undefined, episodes };
+    return { tmdb: digits(info.tmdb_id ?? info.tmdb ?? movie.tmdb_id), imdb: digits(String(info.imdb_id ?? movie.imdb_id ?? '').replace(/^tt/i, '')), title: text(info.name ?? movie.name, 250), plot: text(info.plot ?? info.description, 12000), genre: text(info.genre), cast: text(info.cast), director: text(info.director), year: text(info.releasedate ?? info.releaseDate ?? info.year), duration: text(info.duration), rating: text(info.rating), extension: movie.container_extension ? this.extension(movie.container_extension) : undefined, episodes };
   }
   stream(kind: Kind, itemId: string, extension?: string): string {
     const c = this.credentials;
