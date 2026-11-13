@@ -632,3 +632,13 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
 - **Doğrulanmadı:** tam ekranda (%90 ve %6) görünüm elle bakılmadı, yalnızca değerler sınandı. Pencerede %200
   yazı küçük oynatıcıda alt altyazıyı denetim çubuğuna yaklaştırıyor. Üst altyazı pencerede başlık çubuğunun
   hemen altında; başlık çubuğu görünürken çok uzun bir üst altyazı onunla örtüşebilir.
+
+## Geçmişi temizle düğmesi Son izlenenler'de · 0.2.5
+
+- İstek: "İzleme geçmişini temizle" düğmesi Ayarlar'da değil, Son izlenenler listesinin kendi içinde olsun.
+- Düğme ("Geçmişi temizle") yalnızca Son izlenenler görünümünde ve listede en az bir kayıt varken, başlık
+  satırında ("Sırala" düğmesinin yanında) görünüyor; basınca liste boşalıyor ve düğme kayboluyor. Ayarlar'daki
+  düğme ve `onClearHistory` özelliği kaldırıldı. Davranış aynı: onay sorulmuyor, bütün geçmiş (kilitli
+  listelerdekiler dahil) siliniyor; favoriler ve altyazı kayıtları etkilenmiyor.
+- `scripts/ui-checks.ts` (`npm run test:e2e`): düğme Son izlenenler'de görünüyor, basınca "Henüz izleme geçmişi
+  yok" çıkıyor ve düğme kayboluyor; Ayarlar'da artık böyle bir düğme yok.

@@ -3,7 +3,7 @@
 Backend geliştiricisi olup frontend'e yeni başlayanlar için. Bu belge repoyu
 **nasıl yazıldığını, nasıl çalıştığını ve nasıl geliştirileceğini** anlatır.
 
-- Kod durumu: sürüm **0.2.4**, 2026-09-30 tarihli çalışma dizini.
+- Kod durumu: sürüm **0.2.5**, 2026-09-30 tarihli çalışma dizini.
 - Belgedeki her iddia koddan okunarak yazıldı. Doğrulanamayan yerler açıkça
   "doğrulanmadı" diye işaretlendi.
 - Satır numarası yerine dosya ve fonksiyon adı verildi; satırlar kayar, adlar
