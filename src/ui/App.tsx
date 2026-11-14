@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type Account, type Category, type Download, type Item, type Kind, type Library, type Platform, type Playback, type Preferences, type PinRecord, type Visibility, itemKey } from '../core/models';
+import { type Account, type Category, type Detail, type Download, type Episode, type Item, type Kind, type Library, type Platform, type Playback, type Preferences, type PinRecord, type Visibility, itemKey } from '../core/models';
 import { categoryState, isLockedItem, lockKey, withCategoryState } from '../core/lock';
 import { MAX_SAVED_CATEGORIES, applyOrder, moveInList, moveSaved, type Move } from '../core/order';
 import { matches, normalizeLibrary, remember, toggleFavorite } from '../core/library';
@@ -30,6 +30,9 @@ function Workspace({ platform, account, onLogout }: { platform: Platform; accoun
   const [view, setView] = useState<View>('live'), [category, setCategory] = useState<string | null>(null), [query, setQuery] = useState('');
   const [categories, setCategories] = useState<Category[]>([]), [items, setItems] = useState<Item[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [reload, setReload] = useState(0), [limit, setLimit] = useState(60);
   const [library, setLibrary] = useState<Library>(normalizeLibrary({})), [ready, setReady] = useState(false), [storageError, setStorageError] = useState('');
+  // The episodes of the series being watched, so the next one is at hand; `detailHint` says which season and episode a series page opens on.
+  const [queue, setQueue] = useState<{ seriesId: string; episodes: Episode[] }>(), [detailHint, setDetailHint] = useState<{ season?: number; current?: string }>(), queueRef = useRef(queue);
+  queueRef.current = queue;
   const [detail, setDetail] = useState<Item>(), [playing, setPlaying] = useState<{ item: Item; playback: Playback; resumeAt: number }>(), [connecting, setConnecting] = useState<Item>(), [playError, setPlayError] = useState(''), [streamStarted, setStreamStarted] = useState(false), [full, setFull] = useState(false), [confirmExit, setConfirmExit] = useState(false), [trackMenu, setTrackMenu] = useState(false);
   const libraryRef = useRef(library), saveTimer = useRef<ReturnType<typeof setTimeout>>(), saveQueue = useRef(Promise.resolve()), lastSaveError = useRef<Error>(), forgetting = useRef(false), playRevision = useRef(0), alive = useRef(true);
   const catalog = view === 'live' || view === 'vod' || view === 'series';
@@ -132,8 +135,22 @@ function Workspace({ platform, account, onLogout }: { platform: Platform; accoun
     platform.call<Item[]>('items', { kind: view, category }).then(value => { if (current) setItems(value); }).catch(e => { if (current) showError(e); }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
   }, [view, category, reload]);
-  async function play(item: Item) {
-    if (hidden(item)) { unlockThen(() => void play(item)); return; }
+  // The episodes after the one playing: the list the viewer opened the episode from, or, for an episode that comes from
+  // the history or favourites, the series' own list asked for in the background.
+  const nextEpisode = useMemo(() => {
+    const item = playing?.item;
+    if (!item?.isEpisode || !item.seriesId || playing?.playback.local || !queue || queue.seriesId !== item.seriesId) return undefined;
+    const at = queue.episodes.findIndex(e => e.id === item.id);
+    return at >= 0 ? queue.episodes[at + 1] : undefined;
+  }, [playing, queue]);
+  function playNext() { const current = playing?.item; if (current && nextEpisode) void play({ ...nextEpisode, categoryId: current.categoryId, series: current.series, seriesId: current.seriesId }); }
+  async function play(item: Item, episodes?: Episode[]) {
+    if (hidden(item)) { unlockThen(() => void play(item, episodes)); return; }
+    if (item.isEpisode && item.seriesId) {
+      const seriesId = item.seriesId;
+      if (episodes) setQueue({ seriesId, episodes });
+      else if (queueRef.current?.seriesId !== seriesId) platform.call<Detail>('detail', { kind: 'series', id: seriesId }).then(d => { if (alive.current) setQueue({ seriesId, episodes: d.episodes }); }, () => {});
+    } else setQueue(undefined);
     setDetail(undefined); setPlayError(''); setPlaying(undefined); setStreamStarted(false); setConnecting(item); setTrackMenu(false);
     const version = ++playRevision.current;
     try {
@@ -155,8 +172,14 @@ function Workspace({ platform, account, onLogout }: { platform: Platform; accoun
     } catch (e) { if (version === playRevision.current) setPlayError((e as Error).message); }
     finally { if (version === playRevision.current) setConnecting(undefined); }
   }
-  function select(item: Item) { if (item.kind === 'live' || item.isEpisode) void play(item); else setDetail(item); }
-  function stop() { ++playRevision.current; setTrackMenu(false); setPlaying(undefined); setStreamStarted(false); setConnecting(undefined); setFull(false); setPlayError(''); void platform.call('stop').catch(() => {}); }
+  function select(item: Item) { if (item.kind === 'live' || item.isEpisode) void play(item); else { setDetailHint(undefined); setDetail(item); } }
+  // Closing the player of an episode leads back to that series' episodes, on the season and episode just watched, not to the list of all series.
+  function closePlayer() {
+    const item = playing?.item, local = playing?.playback.local;
+    stop();
+    if (item?.isEpisode && item.seriesId && !local) { setDetailHint({ season: item.season, current: item.id }); setDetail({ id: item.seriesId, kind: 'series', name: item.series || '', categoryId: item.categoryId }); }
+  }
+  function stop() { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); ++playRevision.current; setTrackMenu(false); setPlaying(undefined); setStreamStarted(false); setConnecting(undefined); setFull(false); setPlayError(''); void platform.call('stop').catch(() => {}); }
   async function logout(forget = false) {
     try {
       if (forget) forgetting.current = true;
@@ -168,7 +191,7 @@ function Workspace({ platform, account, onLogout }: { platform: Platform; accoun
   useEffect(() => {
     const back = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' && e.keyCode !== 461) return; e.preventDefault(); e.stopImmediatePropagation();
-      if (lockRequest) closeLock(); else if (scheduling) setScheduling(undefined); else if (trackMenu) setTrackMenu(false); else if (full) setFull(false); else if (detail) setDetail(undefined); else if (confirmExit) setConfirmExit(false); else if (query) setQuery(''); else if (playing || connecting) stop(); else if (view !== 'live') navigate('live'); else if (category) setCategory(''); else if (platform.type === 'tv') setConfirmExit(true);
+      if (lockRequest) closeLock(); else if (scheduling) setScheduling(undefined); else if (trackMenu) setTrackMenu(false); else if (full) setFull(false); else if (detail) setDetail(undefined); else if (confirmExit) setConfirmExit(false); else if (query) setQuery(''); else if (playing) closePlayer(); else if (connecting) stop(); else if (view !== 'live') navigate('live'); else if (category) setCategory(''); else if (platform.type === 'tv') setConfirmExit(true);
     };
     window.addEventListener('keydown', back, true); return () => window.removeEventListener('keydown', back, true);
   }, [full, trackMenu, detail, confirmExit, query, playing, connecting, view, category, lockRequest, scheduling]);
@@ -190,14 +213,14 @@ function Workspace({ platform, account, onLogout }: { platform: Platform; accoun
             {view === 'downloads' ? <Downloads platform={platform} onPlay={row => void playLocal(row)} /> : view === 'recordings' ? <Recordings platform={platform} onPlay={row => void playLocal(row)} /> : selectedLocked ? <div className="empty"><Icon name="lock" size={36} /><h3>Bu liste kilitli</h3><p>İçeriği görmek için PIN girin.</p><button onClick={() => unlockThen()}>Kilidi aç</button></div> : loading && catalog ? <div className="empty" role="status"><div className="spinner" />İçerikler yükleniyor…</div> : error && catalog ? <div className="empty"><div role="alert" className="error">{error}</div><button onClick={() => setReload(v => v + 1)}>Tekrar dene</button></div> : filtered.length === 0 ? <div className="empty"><Icon name={view === 'favorites' ? 'heart' : 'search'} size={36} /><h3>{query ? 'Sonuç bulunamadı' : view === 'favorites' ? 'Favorileriniz burada' : view === 'recent' ? 'Henüz izleme geçmişi yok' : 'Bu kategori boş'}</h3><p>{query ? 'Başka bir adla arayın veya tüm içeriklere geçin.' : view === 'favorites' ? 'İçeriklerin yanındaki kalbe basarak ekleyin.' : 'Bir içerik seçerek izlemeye başlayabilirsiniz.'}</p>{query && <button onClick={() => { setQuery(''); setCategory(''); }}>Tüm içerikleri göster</button>}</div> : <div className={`tile-grid ${view === 'vod' || view === 'series' ? 'tile-grid-posters' : ''}`}>{filtered.slice(0, limit).map((item, index) => <Tile key={itemKey(item)} item={item} index={index} playing={!!playing && itemKey(playing.item) === itemKey(item)} favorite={isFavorite(item)} posters={posters} epoch={posterEpoch} ready={ready} arrange={arranging && canArrange ? { first: index === 0, last: index === filtered.length - 1, onMove: move => moveItem(item, move) } : undefined} onSelect={() => select(item)} onFavorite={() => update(current => toggleFavorite(current, item))} />)}</div>}
             {filtered.length > limit && <button className="load-more" onClick={() => setLimit(v => v + 60)}>Daha fazla göster ({filtered.length - limit})</button>}
           </section>
-          {(view === 'live' || playing || connecting || playError) && <aside className="watch-area">{playing ? <Player key={playing.playback.url} platform={platform} item={playing.item} playback={playing.playback} preferences={library.preferences} resumeAt={playing.resumeAt} full={full} onFull={setFull} menu={trackMenu} onMenu={setTrackMenu} onPreference={preference} onProgress={position => { if (!playing.playback.local) update(current => remember(current, playing.item, position)); }} onStarted={() => setStreamStarted(true)} onClose={stop} onRetry={() => void (playing.playback.local ? playLocal(playing.item) : play(playing.item))} /> : <div className="watch-placeholder">{connecting ? <><div className="spinner" /><h3>{connecting.name}</h3><p>Yayına bağlanılıyor…</p><button onClick={stop}>İptal</button></> : playError ? <><div className="error" role="alert">{playError}</div><p>Listeden içeriği tekrar seçerek deneyin.</p></> : <><div className="placeholder-mark"><Icon name="play" size={40} /></div><h3>Bir kanal seçin</h3><p>Canlı yayınınız burada başlasın.</p><span className="pill">SADECE SİZİN HESABINIZ</span></>}</div>}{playing?.item.kind === 'live' && platform.type === 'mac' && <RecordBar platform={platform} item={playing.item} onSchedule={() => setScheduling({ item: playing.item, start: Date.now(), end: Date.now() + 3600000 })} />}{playing?.item.kind === 'live' && streamStarted && <Guide platform={platform} item={playing.item} onRecord={platform.type === 'mac' ? (row => setScheduling({ item: playing.item, title: row.title, start: Math.max(Date.now(), row.start - 60000), end: row.end + 180000, padded: true })) : undefined} />}<div className="watch-hint"><Icon name="full" size={16} /><span>{platform.type === 'tv' ? 'Tam ekran düğmesiyle yayını büyütün. Geri ile dönün.' : 'Tam ekran için F · Oynat / duraklatlat için boşluk'}</span></div></aside>}
+          {(view === 'live' || playing || connecting || playError) && <aside className="watch-area">{playing ? <Player key={playing.playback.url} platform={platform} item={playing.item} playback={playing.playback} preferences={library.preferences} resumeAt={playing.resumeAt} full={full} onFull={setFull} menu={trackMenu} onMenu={setTrackMenu} onPreference={preference} onProgress={position => { if (!playing.playback.local) update(current => remember(current, playing.item, position)); }} onStarted={() => setStreamStarted(true)} next={nextEpisode} onNext={playNext} onClose={closePlayer} onRetry={() => void (playing.playback.local ? playLocal(playing.item) : play(playing.item))} /> : <div className="watch-placeholder">{connecting ? <><div className="spinner" /><h3>{connecting.name}</h3><p>Yayına bağlanılıyor…</p><button onClick={stop}>İptal</button></> : playError ? <><div className="error" role="alert">{playError}</div><p>Listeden içeriği tekrar seçerek deneyin.</p></> : <><div className="placeholder-mark"><Icon name="play" size={40} /></div><h3>Bir kanal seçin</h3><p>Canlı yayınınız burada başlasın.</p><span className="pill">SADECE SİZİN HESABINIZ</span></>}</div>}{playing?.item.kind === 'live' && platform.type === 'mac' && <RecordBar platform={platform} item={playing.item} onSchedule={() => setScheduling({ item: playing.item, start: Date.now(), end: Date.now() + 3600000 })} />}{playing?.item.kind === 'live' && streamStarted && <Guide platform={platform} item={playing.item} onRecord={platform.type === 'mac' ? (row => setScheduling({ item: playing.item, title: row.title, start: Math.max(Date.now(), row.start - 60000), end: row.end + 180000, padded: true })) : undefined} />}<div className="watch-hint"><Icon name="full" size={16} /><span>{platform.type === 'tv' ? 'Tam ekran düğmesiyle yayını büyütün. Geri ile dönün.' : 'Tam ekran için F · Oynat / duraklatlat için boşluk'}</span></div></aside>}
           </div>
         </div>
       </div>}
     </main>
     {lockRequest && <LockDialog request={lockRequest} record={locks.pin} onClose={closeLock} />}
     {scheduling && <ScheduleDialog platform={platform} request={scheduling} onClose={() => setScheduling(undefined)} />}
-    {detail && <Details item={detail} platform={platform} onClose={() => setDetail(undefined)} onPlay={item => void play(item)} onPlayOffline={row => void playLocal(row)} />}
+    {detail && <Details item={detail} hint={detailHint} platform={platform} onClose={() => setDetail(undefined)} onPlay={(item, episodes) => void play(item, episodes)} onPlayOffline={row => void playLocal(row)} />}
     {confirmExit && <Modal title="UYGULAMADAN ÇIK" onClose={() => setConfirmExit(false)}><h2>İzlemeyi bitirelim mi?</h2><p className="muted">Hesabınız kilitlenecek, tercihleriniz cihazda kalacak.</p><div className="button-row"><button onClick={() => setConfirmExit(false)}>Burada kal</button><button className="primary" onClick={async () => { await logout(); platform.exit(); }}>Çıkış yap</button></div></Modal>}
   </div>;
 }

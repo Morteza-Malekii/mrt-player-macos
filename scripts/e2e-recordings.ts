@@ -56,6 +56,7 @@ try {
       await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 25000 }).toBeGreaterThan(0.5);
       expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.currentSrc)).toMatch(/^kiyi:\/\/local\/[a-f0-9]{16}$/);
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'İndirilenler', exact: true }).first().click();
       await expect(page.getByText('Henüz indirme yok')).toBeVisible();
       // A programme is planned from the guide; it is under way at once, so it records right away.

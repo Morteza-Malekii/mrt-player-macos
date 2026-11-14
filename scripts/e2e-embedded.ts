@@ -137,6 +137,7 @@ try {
       await advancing(page);
       await page.waitForTimeout(900); // preferences are saved on a short debounce
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
     } finally { await app.close(); }
   }
   const library = JSON.parse(await readFile(path.join(data, (await readdir(data)).find(name => /^library-[a-f0-9]{24}\.json$/.test(name))!), 'utf8'));
@@ -152,6 +153,7 @@ try {
       await expect(audio(page).getByRole('radio', { name: 'Türkçe · Dublaj · 5.1' })).toBeChecked();
       expect(near(await tone(page), 880, 15)).toBe(true);
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
 
       // An episode with nothing but E-AC-3 sound: it used to play without sound; now it is converted.
       await page.getByRole('button', { name: 'Diziler', exact: true }).click();

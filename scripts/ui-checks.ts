@@ -23,6 +23,7 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
   await page.getByRole('button', { name: 'Boş kategori', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Bu kategori boş' })).toBeVisible();
   await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
   await page.getByRole('button', { name: 'Filmler', exact: true }).click();
   await page.getByRole('button', { name: 'Test filmi', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -36,6 +37,7 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
   await page.getByRole('button', { name: '10 saniye geri' }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(3);
   await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
   await page.getByRole('button', { name: 'Diziler', exact: true }).click();
   await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
   await page.getByLabel('Sezon', { exact: true }).selectOption('2');
@@ -50,12 +52,14 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
   }
   await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
   await page.getByRole('button', { name: 'Son izlenenler', exact: true }).click();
   await expect(page.getByRole('button', { name: 'İkinci test', exact: true })).toBeVisible();
   // An episode in history must reopen the episode, not request series details using its id.
   await page.getByRole('button', { name: 'İkinci test', exact: true }).click();
   await expect(page.locator('video')).toHaveCount(1); await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
   // Clearing the history is a button of the history list itself (not of Settings), and it empties that list.
   await expect(page.getByRole('button', { name: 'Geçmişi temizle', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Geçmişi temizle', exact: true }).click();

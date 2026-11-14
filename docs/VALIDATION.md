@@ -642,3 +642,29 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   listelerdekiler dahil) siliniyor; favoriler ve altyazı kayıtları etkilenmiyor.
 - `scripts/ui-checks.ts` (`npm run test:e2e`): düğme Son izlenenler'de görünüyor, basınca "Henüz izleme geçmişi
   yok" çıkıyor ve düğme kayboluyor; Ayarlar'da artık böyle bir düğme yok.
+
+## Dizi: sonraki bölüm, otomatik geçiş, kapatınca bölüm listesi · 0.2.6
+
+- İstek: bir bölüm izlenirken sonrakine hızlı geçilsin; oynatıcı kapanınca bütün dizilerin değil o dizinin bölüm
+  listesi görünsün; bölüm bitince kendiliğinden sonrakine geçilsin; elle "sonraki" düğmesi de olsun.
+- Bölüm sırası: bölümün açıldığı dizi sayfasındaki liste (`Details` → `onPlay(item, episodes)`, sezon ve bölüm numarasına
+  göre sıralı) `App`te `queue` olarak tutuluyor; sezon sonunda bir sonraki sezonun ilk bölümüne geçiliyor. Geçmişten
+  veya favorilerden açılan bölümde (kayıtlı `seriesId` ile) liste arka planda `get_series_info` ile isteniyor; eski, `seriesId`
+  taşımayan kayıtlarda sonraki düğmesi çıkmıyor (kayıt dizi kimliğini bilmiyor). İndirilmiş dosya ve film etkilenmiyor.
+- Sonraki: denetim çubuğunda "Sonraki ›", `N` tuşu; bölüm bitince `Player` içinde 5 sn geri sayım ("Şimdi oynat" ve
+  "İptal"); oynatma yeniden başlarsa (`play` olayı) sayım iptal oluyor.
+- Kapatma: `closePlayer` bölümü kapatıp o dizinin sayfasını açıyor (`detailHint`: bölümün sezonu seçili, bölüm "Son izlenen"
+  işaretli ve listede ortalanmış). Güvenlik amaçlı kapatmalar (kilitlenen liste, gizlenen kategori) ve "İptal" bunu
+  yapmıyor, düz `stop` kullanıyor.
+- Tam ekran: eskiden oynatıcının kendi kutusu tam ekran isteniyordu; bölüm değişince o kutu yok olup tam ekrandan
+  düşülüyordu. Şimdi sayfanın tamamı (`documentElement`) isteniyor, oynatıcı değişse de tam ekran sürüyor; `stop`
+  oynatıcı kapanırken tam ekrandan çıkıyor.
+- Test (`npm run test:episodes`, gerçek pencere): düğme birinci sezondan ikinciye geçiriyor, son bölümde düğme yok; kapatınca
+  bölüm listesi 2. sezonda ve "Son izlenen" işaretli açılıyor, arkadaki katalog değişmiyor; `N` tuşu; bölüm sonunda geri
+  sayım görünüyor ve kimse dokunmadan sonraki bölüm açılıyor; "İptal" bölümü olduğu yerde bırakıyor (6,5 sn beklenip
+  doğrulandı); geçmişten açılan bölümde sonraki düğmesi çıkıyor ve kapatınca dizi sayfası açılıyor; film için düğme yok
+  ve kapatınca dizi sayfası açılmıyor.
+- **Doğrulanmadı:** gerçek tam ekranın sürmesi. Test penceresinde yerel tam ekran hiçbir öğe için tamamlanmıyor (istek
+  bekleyen kalıyor), bu yüzden test yalnızca sayfanın bir kez tam ekran istediğini ve bölüm değişince çıkış istenmediğini
+  sınıyor. Gerçek pencerede elle denemek gerekir. Ayrıca geri sayım sırasında bölüm değişimi sonrası kaldığı yerden devam
+  kuralı geçerli: daha önce yarım izlenmiş bir bölüm baştan değil, kaldığı yerden açılır.

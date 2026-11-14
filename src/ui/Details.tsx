@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type Detail, type Download, type Item, type Platform } from '../core/models';
+import { type Detail, type Download, type Episode, type Item, type Platform } from '../core/models';
 import { Modal } from './Modal';
 import { Icon } from './Icon';
 import { bytes, retryText } from './format';
@@ -24,9 +24,11 @@ function Status({ name, phase, row, onRetry }: { name: string; phase: Phase; row
     {(phase === 'failed' || phase === 'waiting') && <button className="link-button" onClick={onRetry}>{phase === 'waiting' ? 'Şimdi dene' : 'Tekrar dene'}</button>}
   </div>;
 }
-export function Details({ item, platform, onClose, onPlay, onPlayOffline }: { item: Item; platform: Platform; onClose(): void; onPlay(item: Item): void; onPlayOffline(row: Download): void }) {
+// `hint` is where a series page opens when the viewer comes back from watching an episode: that episode's season, with the episode marked.
+export function Details({ item, hint, platform, onClose, onPlay, onPlayOffline }: { item: Item; hint?: { season?: number; current?: string }; platform: Platform; onClose(): void; onPlay(item: Item, episodes?: Episode[]): void; onPlayOffline(row: Download): void }) {
+  const scrolled = useRef(false);
   const [detail, setDetail] = useState<Detail>(), [error, setError] = useState(''), [season, setSeason] = useState<number>(), [retry, setRetry] = useState(0);
-  useEffect(() => { let active = true; setError(''); setDetail(undefined); platform.call<Detail>('detail', { kind: item.kind, id: item.id }).then(d => { if (active) { setDetail(d); setSeason(d.episodes[0]?.season); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [item, retry]);
+  useEffect(() => { let active = true; scrolled.current = false; setError(''); setDetail(undefined); platform.call<Detail>('detail', { kind: item.kind, id: item.id }).then(d => { if (active) { setDetail(d); setSeason(d.episodes.find(e => e.id === hint?.current)?.season ?? hint?.season ?? d.episodes[0]?.season); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [item, retry]);
   // Saving to disk is a Mac feature: it needs the Mac's file system and a place to write to.
   const mac = platform.type === 'mac', [saveError, setSaveError] = useState('');
   // `starting`: clicked, not yet acknowledged. `started`: item key -> download id. `rows`: latest report per id.
@@ -107,7 +109,7 @@ export function Details({ item, platform, onClose, onPlay, onPlayOffline }: { it
           : <button disabled><Icon name="download" /> İndiriliyor…</button>;
       })()}</div>{mac && <Status name={detail.title || item.name} phase={phase(fileOf(item))} row={rowOf(fileOf(item))} onRetry={() => again(fileOf(item))} />}</> : <section className="episodes"><div className="section-title"><h3>Bölümler</h3>{seasons.length > 0 && <select aria-label="Sezon" value={season} onChange={e => setSeason(Number(e.target.value))}>{seasons.map(s => <option key={s} value={s}>{s}. sezon</option>)}</select>}</div>{detail.episodes.length === 0 && <div className="empty">Bu dizi için bölüm bulunamadı.</div>}{detail.episodes.filter(e => e.season === season).map(e => {
         const state = phase(e), size = sizeText(e), label = `${detail.title || item.name} S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')} ${e.name}`;
-        return <div key={e.id}><div className="episode-row"><button className="episode" onClick={() => onPlay({ ...e, categoryId: item.categoryId, series: detail.title || item.name, seriesId: item.id })}><span className="episode-number">{String(e.episode).padStart(2, '0')}</span><span><strong>{e.name}</strong><small>{e.duration || `${e.season}. sezon`}</small></span><Icon name="play" /></button>{mac && (state === 'done' && rowOf(e) ? <button className="episode-download" aria-label={`${e.name} bölümünü çevrimdışı oynat`} onClick={() => onPlayOffline(rowOf(e)!)}><Icon name="play" /><span>Çevrimdışı</span></button> : <button className="episode-download" aria-label={state === 'failed' ? `${e.name} bölümünü tekrar indir` : `${e.name} bölümünü indir${size ? ` (${size})` : ''}`} disabled={state !== 'idle' && state !== 'failed'} onClick={() => state === 'failed' ? again(e) : download(e, label)}><Icon name={state === 'failed' ? 'refresh' : 'download'} />{state === 'idle' && size && <span>{size}</span>}</button>)}</div>{mac && <Status name={e.name} phase={state} row={rowOf(e)} onRetry={() => again(e)} />}</div>;
+        return <div key={e.id} ref={e.id === hint?.current ? (el => { if (el && !scrolled.current) { scrolled.current = true; el.scrollIntoView({ block: 'center' }); } }) : undefined}><div className="episode-row"><button className={`episode ${e.id === hint?.current ? 'current' : ''}`} onClick={() => onPlay({ ...e, categoryId: item.categoryId, series: detail.title || item.name, seriesId: item.id }, detail.episodes)}><span className="episode-number">{String(e.episode).padStart(2, '0')}</span><span><strong>{e.name}</strong><small>{e.duration || `${e.season}. sezon`}{e.id === hint?.current ? ' · Son izlenen' : ''}</small></span><Icon name="play" /></button>{mac && (state === 'done' && rowOf(e) ? <button className="episode-download" aria-label={`${e.name} bölümünü çevrimdışı oynat`} onClick={() => onPlayOffline(rowOf(e)!)}><Icon name="play" /><span>Çevrimdışı</span></button> : <button className="episode-download" aria-label={state === 'failed' ? `${e.name} bölümünü tekrar indir` : `${e.name} bölümünü indir${size ? ` (${size})` : ''}`} disabled={state !== 'idle' && state !== 'failed'} onClick={() => state === 'failed' ? again(e) : download(e, label)}><Icon name={state === 'failed' ? 'refresh' : 'download'} />{state === 'idle' && size && <span>{size}</span>}</button>)}</div>{mac && <Status name={e.name} phase={state} row={rowOf(e)} onRetry={() => again(e)} />}</div>;
       })}</section>}
     </>}
   </Modal>;

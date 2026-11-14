@@ -2,7 +2,7 @@
 
 A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-![Version](https://img.shields.io/badge/version-0.2.5-blue)
+![Version](https://img.shields.io/badge/version-0.2.6-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
@@ -128,6 +128,13 @@ For a movie or episode, open **Ses ve altyazı** (Audio and subtitles) in the pl
 - Select **Kapalı** (Off) to hide subtitles.
 
 The file's track list is read for Matroska (`.mkv`) and MP4 files. Picture-based subtitles (PGS, VobSub) and subtitles inside MP4 files are listed but cannot be shown. External subtitles apply only to the current playback. The audio/subtitle menu is not shown during live TV.
+
+### Watching a series
+
+- When an episode is playing, a **Sonraki ›** button (and the `N` key) starts the next episode of the series; after the last episode of a season it goes on to the first of the next one. The last episode has no such button.
+- When an episode ends, a five-second countdown (**Sonraki bölüm … sn içinde başlıyor**) starts the next one by itself. **İptal** keeps the finished episode on screen, **Şimdi oynat** skips the wait.
+- Closing the player of an episode opens that series' episode list, on the season you were watching and with the episode marked **Son izlenen**, instead of returning to the list of all series. This also holds for an episode you started from **Son izlenenler**.
+- Full screen carries over from one episode to the next. Downloaded files and films have no next button.
 
 ### Keyboard controls
 

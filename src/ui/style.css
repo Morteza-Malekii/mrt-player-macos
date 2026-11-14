@@ -144,3 +144,8 @@ video::cue{font-size:1.1em;background:rgba(0,0,0,.72);color:#fff}
 .link-button:hover{background:none}
 .second-subtitle{margin-top:12px;padding-top:10px;border-top:1px solid #2c3f4a}
 .second-subtitle>strong small{display:inline;font-weight:400;color:#93a6b5}
+.episode.current{border:1px solid #47645f;background:#203a36}
+.next-button{font-weight:600}
+.up-next [role=status]{text-align:center}
+.up-next p{margin:8px 0 14px}
+.up-next .button-row{justify-content:center;margin-top:0}

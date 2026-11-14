@@ -192,6 +192,7 @@ try {
       // Opening the same film again brings both back, with the second one's shift.
       await saved(page);
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await playFilm(page);
       await openMenu(page);
       await expect(menu(page).getByRole('radiogroup', { name: 'Altyazı', exact: true }).getByRole('radio', { name: 'eski.srt' })).toBeChecked();
@@ -231,6 +232,7 @@ try {
       await expect.poll(async () => (await probe(page)).enabled).toEqual([true, false]);
       await saved(page);
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'Diziler', exact: true }).click();
       await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
       await page.getByRole('button', { name: /^\d+ Birinci test/ }).click();
@@ -242,6 +244,7 @@ try {
       await expect(menu(page).getByRole('radio', { name: 'Kapalı' })).toBeChecked();
       // Live TV has no dubs or subtitles to choose, so it has no such button.
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'Canlı TV', exact: true }).click();
       await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
       await playing(page);

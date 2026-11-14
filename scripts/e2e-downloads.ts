@@ -53,6 +53,7 @@ try {
       expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.currentSrc)).toMatch(/^kiyi:\/\/local\/[a-f0-9]{16}$/);
       await page.screenshot({ path: 'test-results/downloads-offline-from-detail.png' });
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'İndirilenler', exact: true }).first().click();
       await expect(page.getByText('Tamamlandı')).toBeVisible({ timeout: 30000 });
       const files = await readdir(saved);
@@ -69,6 +70,7 @@ try {
       await page.screenshot({ path: 'test-results/downloads-playing.png' });
       // A local file never enters the viewer's history.
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'Son izlenenler', exact: true }).click();
       await expect(page.getByText('Henüz izleme geçmişi yok')).toBeVisible();
       // The automatic retry choice is off to begin with, can be switched on, and is remembered.
@@ -97,6 +99,7 @@ try {
       await page.getByRole('button', { name: 'Oynat', exact: true }).click();
       await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 25000 }).toBeGreaterThan(0.5);
       await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
       await page.getByRole('button', { name: 'Listeden kaldır' }).click();
       await expect(page.getByText('Henüz indirme yok')).toBeVisible();
       expect(await readdir(saved)).toEqual(['Test filmi.mp4']); // the file itself stays
