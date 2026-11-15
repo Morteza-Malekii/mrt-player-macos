@@ -668,3 +668,17 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   bekleyen kalıyor), bu yüzden test yalnızca sayfanın bir kez tam ekran istediğini ve bölüm değişince çıkış istenmediğini
   sınıyor. Gerçek pencerede elle denemek gerekir. Ayrıca geri sayım sırasında bölüm değişimi sonrası kaldığı yerden devam
   kuralı geçerli: daha önce yarım izlenmiş bir bölüm baştan değil, kaldığı yerden açılır.
+
+## Kategorileri oynatıcı olmadan gezme · 0.2.7
+
+- Kategori açılınca kanal, film ve dizi listesi kullanılabilir alanın tamamını kaplıyor; boş canlı TV
+  oynatıcı paneli kaldırıldı. Panel yalnızca oynatma isteği, bağlantı veya oynatma hatası varken açılıyor.
+- Oynatıcı kapanınca aynı liste tam genişliğe dönüyor. Başka kategoriye, Tüm içerikler'e veya yan menüdeki
+  bir görünüme geçmek önceki oynatmayı durduruyor. Bağlantı hatasında Listeye dön düğmesi paneli kapatıyor.
+  Bölüm oynatıcısını kapatınca dizinin bölüm listesine dönme davranışı korunuyor.
+- `npm run check`: TypeScript, 67 birim testi ve derleme geçti. `npm run test:e2e` ve `npm run test:packaged`:
+  kategori açılışında oynatıcı yok, liste tam genişlikte; kanal seçince video açılıyor; kapatınca aynı kategorideki
+  iki kanal geri geliyor; boş kategori, Tüm içerikler ve Filmler'e geçiş oynatmayı bitiriyor; filmi kapatınca
+  film listesi tam genişlikte. Diğer MVP oynatma, EPG, favori, geçmiş ve dizi kontrolleri de geçti.
+- Apple Silicon `.app` sürümü 0.2.7 olarak paketlendi; ad hoc kod imzası doğrulandı. Paket testi geçici profil
+  ve yerel sentetik medya kullandı.

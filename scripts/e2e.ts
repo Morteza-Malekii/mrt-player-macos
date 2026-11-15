@@ -19,6 +19,40 @@ try {
   await page.getByRole('button', { name: /^Bağlan/ }).click();
   await expect.poll(() => fixture.catalogRequests().find(row => row.action === 'get_live_streams')?.category).toBe('1');
   await page.getByRole('button', { name: 'Test laboratuvarı', exact: true }).click();
+  // Opening a category is browsing: every channel gets the available width until one is chosen.
+  const expectBrowsing = async () => {
+    await expect(page.locator('.watch-area')).toHaveCount(0);
+    await expect(page.locator('video')).toHaveCount(0);
+    await expect(page.locator('.browse-columns')).not.toHaveClass(/with-player/);
+    const widths = await page.locator('.content-list').evaluate(list => ({ list: list.getBoundingClientRect().width, available: list.parentElement!.getBoundingClientRect().width }));
+    expect(Math.abs(widths.list - widths.available)).toBeLessThan(2);
+  };
+  await expectBrowsing();
+  await expect(page.locator('.content-select')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
+  await expect(page.locator('video')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await expectBrowsing();
+  await expect(page.locator('.category.selected')).toHaveText('Test laboratuvarı');
+  await expect(page.locator('.content-select')).toHaveCount(2);
+  // Choosing another category, including "all", also ends the previous playback.
+  await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
+  await expect(page.locator('video')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Boş kategori', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Bu kategori boş' })).toBeVisible();
+  await expectBrowsing();
+  await page.getByRole('button', { name: 'Tüm içerikler', exact: true }).click();
+  await expect(page.locator('.content-select')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
+  await expect(page.locator('video')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Tüm içerikler', exact: true }).click();
+  await expectBrowsing();
+  await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
+  await expect(page.locator('video')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Filmler', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Test filmi', exact: true })).toBeVisible();
+  await expectBrowsing();
+  await page.getByRole('button', { name: 'Canlı TV', exact: true }).click();
   await page.getByRole('button', { name: 'Sentetik test yayını', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 25000 }).toBeGreaterThan(1);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.videoWidth)).toBe(640);

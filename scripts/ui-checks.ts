@@ -22,8 +22,7 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
   await page.getByRole('button', { name: 'Aramayı temizle' }).click();
   await page.getByRole('button', { name: 'Boş kategori', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Bu kategori boş' })).toBeVisible();
-  await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
-  if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
+  await expect(page.locator('.watch-area')).toHaveCount(0);
   await page.getByRole('button', { name: 'Filmler', exact: true }).click();
   await page.getByRole('button', { name: 'Test filmi', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -37,6 +36,9 @@ export async function checkMvp(page: Page, target: 'mac' | 'tv') {
   await page.getByRole('button', { name: '10 saniye geri' }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(3);
   await page.getByRole('button', { name: 'Oynatıcıyı kapat' }).click();
+  await expect(page.locator('.watch-area')).toHaveCount(0);
+  await expect(page.locator('.browse-columns')).not.toHaveClass(/with-player/);
+  await expect(page.getByRole('button', { name: 'Test filmi', exact: true })).toBeVisible();
   if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape'); // closing an episode opens its series page
   await page.getByRole('button', { name: 'Diziler', exact: true }).click();
   await page.getByRole('button', { name: 'Test dizisi', exact: true }).click();
