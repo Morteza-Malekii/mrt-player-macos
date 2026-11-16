@@ -703,3 +703,14 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   aynı kanal geçişi kontrollerini gerçek paket yürütücüsünde geçici profil ve yerel medya ile geçti.
   `npm run test:packaged` ile giriş, tam genişlikte kategori listesi, oynatıcı kapatma, EPG, film,
   dizi, favori ve geçmiş kontrolleri de geçti.
+
+## Akış bilgisi düğmesini kaldırma · 0.2.9
+
+- Kullanıcının isteğiyle canlı, film ve bölüm oynatıcısındaki Akış bilgisi düğmesi kaldırıldı.
+  Artık açılmayan panel, panelin görünürlük durumu, yalnızca bu panel için toplanan zaman sayaçları
+  ve kullanılmayan stiller de kaldırıldı. Medya geçidinin testlerde kullanılan sayaçları korunuyor.
+- Uçtan uca ve 4K testleri kaldırılan düğmeye basmıyor; video ölçümlerini doğrudan video öğesinden
+  okuyor. `npm run check`: TypeScript, 67 birim testi ve derleme geçti.
+- Apple Silicon 0.2.9 `.app` üretildi, ad hoc imzası doğrulandı. `npm run test:packaged`: düğme ve
+  panel yok; video/ses çözümü, oynatma, ses, tam ekran, EPG, film, dizi ve liste gezinmesi geçti.
+  `npm run test:channels:packaged`: önceki/sonraki kanal ve tam ekran geçişleri de geçti.

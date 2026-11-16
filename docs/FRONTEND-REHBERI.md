@@ -4,6 +4,7 @@ Backend geliştiricisi olup frontend'e yeni başlayanlar için. Bu belge repoyu
 **nasıl yazıldığını, nasıl çalıştığını ve nasıl geliştirileceğini** anlatır.
 
 - Kod durumu: sürüm **0.2.6**, 2026-09-30 tarihli çalışma dizini.
+- 0.2.9 güncellemesi: kaldırılan Akış bilgisi paneline ilişkin bölümler güncellendi.
 - Belgedeki her iddia koddan okunarak yazıldı. Doğrulanamayan yerler açıkça
   "doğrulanmadı" diye işaretlendi.
 - Satır numarası yerine dosya ve fonksiyon adı verildi; satırlar kayar, adlar
@@ -287,7 +288,7 @@ onError)` oynatıcıyı kurar ve **bir dispose fonksiyonu döndürür**. Çağı
   (`#0c111b`, `#6ce2bd`, `#81e5c4`...) her yerde elle yazılmış. Tema
   değiştirmek toplu bul-değiştir demektir.
 - Sınıf adları düz, kebab-case ve bileşene göre öbeklenmiş: `.sidebar`,
-  `.nav-item`, `.content-card`, `.player-controls`, `.playback-stats`.
+  `.nav-item`, `.content-card`, `.player-controls`, `.channel-controls`.
   BEM veya CSS-in-JS yok.
 - Yerleşim `flex` ve `grid` ile. Tek responsive kırılım
   `@media (max-width:1200px)`; ayrıca `prefers-reduced-motion` desteği var.
@@ -428,7 +429,7 @@ görürsün.
 | `library` | — | `Library` | Favoriler, geçmiş, tercihler |
 | `saveLibrary` | `{ library }` | `Library` | Temizlenmiş halini diske yazar |
 | `heartbeat` | — | `true` | Oturum hâlâ açık mı? |
-| `mediaStats` | — | `MediaStats \| null` | Akış bilgisi paneli için sayaçlar |
+| `mediaStats` | — | `MediaStats \| null` | Yerel oynatma testleri için medya sayaçları |
 
 Yeni bir eylem eklemek 4 yeri değiştirmek demektir (bkz. 13.3).
 
@@ -569,7 +570,6 @@ macOs/
 | [App.tsx](../src/ui/App.tsx) | `App`, `Workspace` | Kök: giriş yapılmamışsa `Login`, yapılmışsa `Workspace` (kenar çubuğu, liste, oynatıcı alanı). Uygulamanın beyni |
 | [Login.tsx](../src/ui/Login.tsx) | `Login` | Giriş formu; kayıtlı hesap varsa "Kilidi aç" |
 | [Player.tsx](../src/ui/Player.tsx) | `Player` | `<video>` + kontroller + hata/yükleniyor durumu + tam ekran + klavye |
-| [PlaybackStats.tsx](../src/ui/PlaybackStats.tsx) | `PlaybackStats` | "Akış bilgisi" paneli (çözünürlük, tampon, kare kaybı, sunucu hızı...) |
 | [Guide.tsx](../src/ui/Guide.tsx) | `Guide` | Canlı kanalın program rehberi (EPG) |
 | [Details.tsx](../src/ui/Details.tsx) | `Details` | Film/dizi ayrıntı penceresi, sezon ve bölüm listesi |
 | [Settings.tsx](../src/ui/Settings.tsx) | `Settings` | Tercihler formu ve "Liste kilidi" kartı |
@@ -991,18 +991,12 @@ Kanal logosu ve film/dizi afişi, medya vekilinden ayrı bir vekille gelir:
   önce kaydeder (`flush`), sonra reddedilmiş resimler yeniden denesin diye
   `Poster`'ları yeniden oluşturur (`posterEpoch`).
 
-### 8.4 Akış bilgisi paneli ve teşhis
+### 8.4 Oynatma ölçümleri
 
-`PlaybackStats` her saniye örnek alır: çözünürlük, ön tampon, atlanan kare,
-ilk görüntü süresi, kesinti sayısı ve süresi; ses/görüntü çözülmüş bayt
-sayıları; `mediaStats` üzerinden sunucu hızı, en yüksek hız, açık bağlantı,
-sunucu hatası, kurtarılan istek. Bu panel, "takılma ağdan mı, sağlayıcıdan mı,
-codec'ten mi?" sorusunu cevaplamak için yazıldı.
-
-Codec sınırı (VALIDATION 0.1.7 ölçümü): Chromium **AC-3, E-AC-3, MP2, DTS**
-seslerini çözmez. TV'lerde lisanslı Dolby çözücüsü olduğu için aynı yayın
-TV'de akıcı, Mac'te sorunlu olabilir. Panelde "Ses çözümü: Yok · codec
-desteklenmiyor" satırı bunu gösterir.
+0.2.9'da kullanıcının isteğiyle Akış bilgisi düğmesi ve paneli kaldırıldı.
+Yerel testler video çözünürlüğünü, çözülmüş ses/görüntü baytlarını ve kare
+kayıplarını doğrudan video öğesinden okuyabiliyor. Medya geçidinin
+`mediaStats` sayaçları testler için kullanılmaya devam ediyor.
 
 ### 8.5 `Player.tsx` özeti
 
@@ -1011,8 +1005,6 @@ desteklenmiyor" satırı bunu gösterir.
 - **Zamanlayıcı savunmaları:** 25 sn içinde veri gelmezse "yanıt vermiyor";
   `waiting` 20 sn sürerse "yayın kesildi"; kısa beklemelerde (800 ms altı)
   yükleniyor göstergesi çıkmaz.
-- **`timings` bir ref'tir**, state değil: ilk kare zamanı, kesinti sayısı gibi
-  sayaçlar sık güncellenir ama ekranı etkilemez; panel açıkken okunur.
 - **Klavye:** Boşluk oynat/duraklat, `F` tam ekran, `M` sessiz, tam ekranda
   ←/→ 10 sn sarma. Bir `role="dialog"` açıksa (Modal) tuşlar yok sayılır. TV
   tuş kodları (415 oynat, 19 duraklat, 413 durdur, 417/412 ileri/geri, 461 geri)
@@ -1340,7 +1332,6 @@ ve build ile çalışması.
 - `npm run shared:check`: iki depoda aynı dosyaların özetini (SHA-256)
   karşılaştırır. **Şu an hata verir** ve bu beklenen bir durumdur: README'de
   yazıldığı gibi Mac oynatma iyileştirmeleri TV'ye taşınmadı.
-  `PlaybackStats.tsx` da yalnızca macOS deposundadır.
 - `npm run shared:sync`: macOS'taki ortak dosyaları webOS'a **kopyalar**
   (varsayılan hedef `../webOs`). Yıkıcıdır; webOS'taki ayrılmış değişiklikleri
   ezer. Çalıştırmadan önce iki tarafı karşılaştır.

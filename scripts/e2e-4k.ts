@@ -22,10 +22,9 @@ try {
   const video = page.locator('video');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.videoWidth), { timeout: 30000 }).toBe(3840);
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 30000 }).toBeGreaterThan(1);
-  await page.getByRole('button', { name: 'Akış bilgileri' }).click();
-  await expect(page.locator('.playback-stats')).toContainText('3840×2160');
+  await expect(page.getByRole('button', { name: 'Akış bilgileri' })).toHaveCount(0);
   await mkdir('test-results', { recursive: true });
-  await page.screenshot({ path: 'test-results/mac-4k-stats.png' });
+  await page.screenshot({ path: 'test-results/mac-4k-player.png' });
   const start = await video.evaluate((v: HTMLVideoElement) => v.currentTime);
   await page.waitForTimeout(3000);
   const result = await video.evaluate((v: HTMLVideoElement) => ({

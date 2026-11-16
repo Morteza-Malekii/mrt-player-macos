@@ -2,7 +2,7 @@
 
 A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-![Version](https://img.shields.io/badge/version-0.2.8-blue)
+![Version](https://img.shields.io/badge/version-0.2.9-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
@@ -37,7 +37,6 @@ The application interface is currently in **Turkish**. This repository contains 
 | List management | Visible, PIN-locked, or hidden categories across live TV, movies, and series |
 | Audio and subtitles | List every audio track and subtitle inside the file, play AC-3/E-AC-3/DTS dubs by converting them to AAC, show the file's text subtitles, remember the preferred language, load local `.srt` or `.vtt` subtitles, and search OpenSubtitles and SubDL for English, Persian and Turkish ones |
 | Artwork | Optional provider logos and posters, with fallback tiles when images are unavailable |
-| Playback diagnostics | Resolution, buffered duration, dropped frames, startup timing, interruptions, and media transfer statistics |
 | Desktop controls | Keyboard navigation, fullscreen, volume, mute, and a resizable desktop window |
 
 Playback uses conservative buffering and bounded recovery attempts. The media gateway handles upstream connections and adapts parallel movie transfers to the account's reported connection limit. Catalog browsing loads a category first, rather than immediately downloading every item.
@@ -215,7 +214,7 @@ Additional checks exercise the real Electron application and specific playback b
 | --- | --- |
 | `npm run test:e2e` | Login, navigation, EPG, movies, series, and playback |
 | `npm run test:channels` / `npm run test:channels:packaged` | Previous/next channel, fullscreen, list order, search, pagination, favorites, and Recent |
-| `npm run test:4k` | Synthetic local 3840×2160 HLS playback and diagnostics |
+| `npm run test:4k` | Synthetic local 3840×2160 HLS playback and frame measurements |
 | `npm run test:switch` | Channel-switch timing and upstream connection reuse |
 | `npm run test:recover` | Interrupted and bandwidth-limited live streams |
 | `npm run test:lanes` / `npm run test:solo` | Parallel media transfers and single-connection accounts |
@@ -271,7 +270,7 @@ Additional project documents are currently in Turkish:
 | --- | --- |
 | Sign-in fails | Server address, account credentials, account status, TLS certificate validity, and explicit HTTP confirmation if needed |
 | A channel does not start | Provider availability, account connection limit, and the stream's codec/container |
-| Frequent buffering | Open **Akış bilgisi** (Stream information) to inspect buffer, dropped frames, and interruptions; check network and provider throughput |
+| Frequent buffering | Check network stability, provider throughput, and account connection limits |
 | An audio language is missing | The file may not contain it; containers other than MKV/MP4 only show what Chromium can decode |
 | Subtitles do not appear | A picture-based (PGS/VobSub) or MP4 subtitle cannot be shown; load an external `.srt`/`.vtt` |
 | The saved account cannot be opened after an update | Check Keychain access or re-enter the account through the login screen |

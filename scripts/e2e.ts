@@ -57,24 +57,13 @@ try {
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 25000 }).toBeGreaterThan(1);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.videoWidth)).toBe(640);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentSrc.startsWith('blob:'))).toBe(true); // live HLS runs through hls.js (MSE), never the native parser
-  await page.getByRole('button', { name: 'Akış bilgileri' }).click();
-  await expect(page.locator('.playback-stats')).toContainText('HLS uyumluluk');
-  await expect(page.locator('.playback-stats')).toContainText('640×360');
-  // The panel has to answer "is the provider keeping up?", not just "what is on screen".
-  await expect(page.locator('.playback-stats')).toContainText('Sunucu hızı');
-  await expect.poll(() => page.locator('.playback-stats').innerText(), { timeout: 10000 }).toMatch(/Sunucu hızı\s*\n?\s*[\d.]+ Mbps/);
-  await expect(page.locator('.playback-stats')).toContainText('Açık bağlantı');
-  // The ceiling the provider ever reached, not the rate a full buffer throttles down to.
-  // The test clip is a few hundred KB, under the floor a reading needs to be trustworthy, so
-  // "still measuring" is the honest and expected state here; accuracy on a real transfer has
-  // its own dedicated test (e2e-rate.ts).
-  await expect(page.locator('.playback-stats')).toContainText('En yüksek hız');
-  // A decoder that never runs is the difference between "the network is slow" and "this Mac
-  // cannot play this stream", so both tracks have to report real progress on a good stream.
-  await expect.poll(() => page.locator('.playback-stats').innerText(), { timeout: 10000 }).toMatch(/Ses çözümü\s*\n?\s*\d+ KB çözüldü/);
-  await expect.poll(() => page.locator('.playback-stats').innerText(), { timeout: 10000 }).toMatch(/Görüntü çözümü\s*\n?\s*\d+ KB çözüldü/);
-  await expect(page.locator('.playback-stats')).toContainText(/Sunucu hatası\s*\n?\s*0 \/ \d+ istek/);
-  await page.getByRole('button', { name: 'Akış bilgileri' }).click();
+  await expect(page.getByRole('button', { name: 'Akış bilgileri' })).toHaveCount(0);
+  await expect(page.locator('.playback-stats')).toHaveCount(0);
+  // Decoder progress is checked directly now that stream information is no longer in the UI.
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => {
+    const decoded = v as HTMLVideoElement & { webkitAudioDecodedByteCount?: number; webkitVideoDecodedByteCount?: number };
+    return (decoded.webkitAudioDecodedByteCount || 0) > 0 && (decoded.webkitVideoDecodedByteCount || 0) > 0;
+  }), { timeout: 10000 }).toBe(true);
   // The choices that used to live on the settings page are now fixed defaults. The page must
   // not offer them any more, and the defaults must actually be in effect.
   await page.getByRole('button', { name: 'Ayarlar', exact: true }).click();
