@@ -2,7 +2,7 @@
 
 A local IPTV player for Apple Silicon Macs, built with Electron, React, and TypeScript. Connect your own Xtream-compatible account to browse live TV, movies, and series in a desktop interface.
 
-![Version](https://img.shields.io/badge/version-0.2.7-blue)
+![Version](https://img.shields.io/badge/version-0.2.8-blue)
 ![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-black)
 ![Stack](https://img.shields.io/badge/stack-Electron%20%2B%20React%20%2B%20TypeScript-3178c6)
 
@@ -99,6 +99,8 @@ The sidebar contains **Canlı TV** (Live TV), **Filmler** (Movies), **Diziler** 
 Choose a category, search within its contents, and select a tile. Movies open through their detail screen; series provide season and episode selection. Live channels can show the provider's short electronic program guide.
 
 Category lists use the full browsing width until playback is requested. Closing the player restores that space to the same list; choosing another category or sidebar view ends playback. Closing a series episode returns to its episode list.
+
+During live playback, use **Önceki kanal** (Previous channel) and **Sonraki kanal** (Next channel) inside the player, including in fullscreen. They follow the live channels in the list you started from, respecting search and custom order, and include channels beyond the displayed tiles. The corresponding button is disabled at either end of the list.
 
 For a search across the complete catalog, select **Tüm içerikler** (All content). Category browsing is preferable for very large libraries because it avoids loading everything at once.
 
@@ -212,6 +214,7 @@ Additional checks exercise the real Electron application and specific playback b
 | Command | Coverage |
 | --- | --- |
 | `npm run test:e2e` | Login, navigation, EPG, movies, series, and playback |
+| `npm run test:channels` / `npm run test:channels:packaged` | Previous/next channel, fullscreen, list order, search, pagination, favorites, and Recent |
 | `npm run test:4k` | Synthetic local 3840×2160 HLS playback and diagnostics |
 | `npm run test:switch` | Channel-switch timing and upstream connection reuse |
 | `npm run test:recover` | Interrupted and bandwidth-limited live streams |

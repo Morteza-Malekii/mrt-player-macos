@@ -682,3 +682,24 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   film listesi tam genişlikte. Diğer MVP oynatma, EPG, favori, geçmiş ve dizi kontrolleri de geçti.
 - Apple Silicon `.app` sürümü 0.2.7 olarak paketlendi; ad hoc kod imzası doğrulandı. Paket testi geçici profil
   ve yerel sentetik medya kullandı.
+
+## Oynatıcıdan önceki / sonraki kanala geçme · 0.2.8
+
+- Canlı oynatıcının denetimlerinde Önceki kanal / Sonraki kanal düğmeleri var; normal ve tam ekran
+  görünümünde çalışıyor. Başlık ipucu gidilecek kanalın adını gösteriyor; listenin başında önceki,
+  sonunda sonraki düğmesi devre dışı. Film, yerel dosya ve dizi bölümlerinde bu düğmeler yok.
+- Sıra, kanalın başlatıldığı listenin canlı kanallarından alınıyor: kategori, arama, özel sıra, Favoriler
+  ve Son izlenenler destekleniyor. Görüntülenen 60 kutuluk sınır sırayı kesmiyor. Sıra oynatma boyunca
+  korunuyor; Son izlenenler'in izlenen kanalı başa taşıması sonraki/önceki komşuları değiştirmiyor.
+  Kilitlenen veya gizlenen kategoriler sıradan yeniden süzülüyor.
+- `npm run check`: TypeScript, 67 birim testi ve derleme geçti. `npm run test:channels`: her iki yönde
+  video oynatma, sınırlar, tek sonuçlu arama, 60. kutudan henüz gösterilmeyen 61. kanala geçiş, özel
+  sıra, arada film bulunan favoriler ve geçmiş sırası geçti. Tam ekran isteğinin sayfaya bir kez
+  yapılması ve kanal geçişlerinde çıkış istenmemesi doğrulandı; test penceresinde yerel tam ekran
+  isteği tamamlanmadığı için gerçek macOS tam ekran geçişi elle doğrulanmış sayılmaz.
+- `npm run test:episodes`: sonraki bölüm düğmesi, N tuşu, otomatik geçiş, iptal ve kapatınca bölüm
+  listesine dönme kontrolleri geçti. Kanal geçişi, canlı yayın bitince otomatik bölüm sayacı başlatmıyor.
+- Apple Silicon 0.2.8 `.app` üretildi ve ad hoc imzası doğrulandı. `npm run test:channels:packaged`
+  aynı kanal geçişi kontrollerini gerçek paket yürütücüsünde geçici profil ve yerel medya ile geçti.
+  `npm run test:packaged` ile giriş, tam genişlikte kategori listesi, oynatıcı kapatma, EPG, film,
+  dizi, favori ve geçmiş kontrolleri de geçti.

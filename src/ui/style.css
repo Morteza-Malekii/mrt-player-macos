@@ -12,6 +12,11 @@ svg{flex-shrink:0;vertical-align:middle}button svg+span{margin-left:10px}button.
 .playback-stats small{font-size:10px;margin-top:9px}
 .player-full .playback-stats{right:45px;bottom:105px;width:300px}.lock-form{max-width:430px}.lock-form h2{font-size:24px}.lock-form input{width:100%;letter-spacing:.35em}.lock-form .button-row{margin-top:20px;align-items:center}.lock-form .button-row .primary{margin-top:0}@media(max-width:1200px){}
 .tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px;align-items:start}
+.channel-controls{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px}
+.channel-button{display:inline-flex;align-items:center;gap:6px;border:1px solid #ffffff30;background:#0006;color:#fff;border-radius:7px;padding:6px 9px;font-size:11px;white-space:nowrap}
+.channel-button svg+span{margin-left:0}
+.channel-button:disabled{cursor:default;opacity:.35}
+.player-full .channel-button{font-size:14px;padding:10px 14px}
 .tile-grid-posters{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
 .content-card.tile{position:relative;overflow:hidden;border:1px solid #25303d;border-radius:10px;background:#121c28;padding:0;margin:0}
 .tile:hover{border-color:#5a6d84}
