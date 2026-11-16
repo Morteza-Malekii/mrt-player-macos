@@ -714,3 +714,13 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
 - Apple Silicon 0.2.9 `.app` üretildi, ad hoc imzası doğrulandı. `npm run test:packaged`: düğme ve
   panel yok; video/ses çözümü, oynatma, ses, tam ekran, EPG, film, dizi ve liste gezinmesi geçti.
   `npm run test:channels:packaged`: önceki/sonraki kanal ve tam ekran geçişleri de geçti.
+
+## Puana göre süzgeç · 0.2.10
+
+- Filmler ve Diziler listelerinin üst çubuğuna "Puan" seçicisi eklendi: Hepsi, 5, 6, 7, 8, 9 ve üzeri.
+  Puan, sağlayıcının liste yanıtındaki `rating` alanından (0-10, genelde TMDB/IMDb) gelir; uygulama
+  kendisi puan üretmez. Puanı olmayan (boş, 0 veya okunamayan) içerikler süzgeç açıkken gösterilmez.
+  Canlı TV'de seçici yoktur; seçim oturum boyunca Filmler ve Diziler arasında korunur, kalıcı değildir.
+- `npm run check`: TypeScript, 68 birim testi ve derleme geçti. `npm run test:score`: süzgeç 7 ve 9
+  değerlerinde doğru içerikleri bıraktı, Canlı TV'de seçici yok, "Hepsi" hepsini geri getirdi.
+  `npm run test:e2e` ve `npm run test:posters` de geçti.

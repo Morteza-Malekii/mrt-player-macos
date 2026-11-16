@@ -1,5 +1,6 @@
 import type { Item } from '../core/models';
 import type { Move } from '../core/order';
+import { scoreOf } from '../core/library';
 import { Icon } from './Icon';
 import { Poster } from './Poster';
 const initials = (name: string) => name.slice(0, 2).toLocaleUpperCase('tr-TR');
@@ -10,8 +11,8 @@ const initials = (name: string) => name.slice(0, 2).toLocaleUpperCase('tr-TR');
 // to the front, one place earlier, one place later.
 export interface Arrange { first: boolean; last: boolean; onMove(move: Move): void }
 export function Tile({ item, index, playing, favorite, posters, epoch, ready, arrange, onSelect, onFavorite }: { item: Item; index: number; playing: boolean; favorite: boolean; posters: boolean; epoch: number; ready: boolean; arrange?: Arrange; onSelect(): void; onFavorite(): void }) {
-  const live = item.kind === 'live', score = Number(item.rating);
-  const rating = !live && Number.isFinite(score) && score > 0 ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : '';
+  const live = item.kind === 'live', score = live ? 0 : scoreOf(item);
+  const rating = score ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : '';
   return <article className={`content-card tile ${live ? 'tile-live' : 'tile-poster'} ${playing ? 'now-playing' : ''} ${arrange ? 'arranging' : ''}`}>
     <button className="content-select" aria-label={item.name} tabIndex={arrange ? -1 : undefined} onClick={arrange ? undefined : onSelect}>
       <span className={`tile-art tone-${index % 6}`}><Poster key={epoch} item={item} enabled={posters}>{live ? <span className="tile-initials">{initials(item.name)}</span> : <Icon name={item.kind === 'series' ? 'series' : 'film'} size={38} />}</Poster></span>

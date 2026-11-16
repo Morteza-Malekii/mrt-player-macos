@@ -55,3 +55,7 @@ export function remember(library: Library, item: Item, position = 0): Library {
   return normalizeLibrary({ ...library, recent: [{ item, at: Date.now(), position }, ...library.recent.filter(x => itemKey(x.item) !== itemKey(item))] });
 }
 export const matches = (name: string, query: string) => name.toLocaleLowerCase('tr-TR').includes(query.trim().toLocaleLowerCase('tr-TR'));
+// The score a provider lists for a film or series (0-10, as TMDB and IMDb give it); 0 when it gives none or something unreadable.
+export const scoreOf = (item: Item) => { const score = Number(item.rating); return Number.isFinite(score) && score > 0 ? score : 0; };
+// Keeps what scores at least `min`; with no minimum everything stays, with one the unscored ones go too.
+export const atLeastScore = (items: Item[], min: number) => min > 0 ? items.filter(item => scoreOf(item) >= min) : items;

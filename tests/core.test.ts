@@ -4,7 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { decodeText, normalizeEpg } from '../src/core/epg';
 import { imageUrl, normalizeCredentials, Xtream } from '../src/core/xtream';
-import { matches, normalizeLibrary, remember, toggleFavorite } from '../src/core/library';
+import { atLeastScore, matches, normalizeLibrary, remember, scoreOf, toggleFavorite } from '../src/core/library';
 import { publicError } from '../src/core/errors';
 import { applyOrder, moveInList, moveSaved, type Move } from '../src/core/order';
 import { decodeSubtitles, languageKey, languageName, parseSubtitles, preferredTrack, trackNames } from '../src/core/tracks';
@@ -318,4 +318,12 @@ test('altyazı ayrıştırma: SRT ve WebVTT, yerleşim etiketleri, bozuk bloklar
   assert.deepEqual(parseSubtitles(''), []); assert.deepEqual(parseSubtitles('rastgele metin'), []);
   const many = Array.from({ length: 30 }, (_, i) => `${i + 1}\n00:00:${String(i).padStart(2, '0')},000 --> 00:00:${String(i).padStart(2, '0')},500\nx`).join('\n\n');
   assert.equal(parseSubtitles(many, 10).length, 10);
+});
+test('puan süzgeci: en az puanı geçenleri bırakır, puansızı ve okunamayanı eler', () => {
+  const film = (id: string, rating?: string) => ({ id, kind: 'vod' as const, name: `Film ${id}`, categoryId: '1', rating });
+  const all = [film('1', '9.1'), film('2', '7'), film('3', '6.9'), film('4', '0'), film('5', ''), film('6', 'abc'), film('7')];
+  assert.equal(scoreOf(film('1', '7.5')), 7.5); assert.equal(scoreOf(film('2', 'abc')), 0); assert.equal(scoreOf(film('3')), 0);
+  assert.deepEqual(atLeastScore(all, 7).map(x => x.id), ['1', '2']);
+  assert.deepEqual(atLeastScore(all, 9).map(x => x.id), ['1']);
+  assert.equal(atLeastScore(all, 0).length, all.length);
 });
