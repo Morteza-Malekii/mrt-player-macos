@@ -735,3 +735,13 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
   kapalıdır; bu, 0.2.10'daki bir eksikti.
 - `npm run check`: 68 birim test (rastgele taşıma testi artık sona almayı da içeriyor) ve derleme geçti.
   `npm run test:order` ve `npm run test:channels` geçti.
+
+## Kanal düğmeleri oynatıcının kenarlarında · 0.2.12
+
+- Canlı yayında Önceki/Sonraki kanal düğmeleri, alttaki denetim çubuğundan çıkarılıp oynatıcının sol ve
+  sağ kenarına dikey birer şerit olarak taşındı. Şeritte yalnızca « ve » işareti var; fare üzerine
+  gelince (veya klavye odağında) belirir, aksi halde görünmez. Listenin başında/sonunda ilgili şerit
+  pasif kalır ve üzerine gelince soluk görünür. Tam ekranda şeritler ve işaretler daha büyüktür ve
+  alttaki denetimler gizlense de çalışır. Erişilebilir adlar ve ipuçları (kanal adı) aynı.
+- Boştaki ve fareyle üzerine gelinmiş oynatıcı ekran görüntüsüyle elle kontrol edildi.
+  `npm run check` ve `npm run test:channels` geçti.

@@ -1,6 +1,6 @@
 {
   "name": "mrt-player-macos",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "private": true,
   "type": "module",
   "description": "Kişisel Xtream oynatıcı",
