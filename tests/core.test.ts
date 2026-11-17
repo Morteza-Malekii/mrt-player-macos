@@ -6,7 +6,7 @@ import { decodeText, normalizeEpg } from '../src/core/epg';
 import { imageUrl, normalizeCredentials, Xtream } from '../src/core/xtream';
 import { atLeastScore, matches, normalizeLibrary, remember, scoreOf, toggleFavorite } from '../src/core/library';
 import { publicError } from '../src/core/errors';
-import { applyOrder, moveInList, moveSaved, type Move } from '../src/core/order';
+import { applyOrder, fitsEnd, moveInList, moveSaved, type Move } from '../src/core/order';
 import { decodeSubtitles, languageKey, languageName, parseSubtitles, preferredTrack, trackNames } from '../src/core/tracks';
 import { categoryState, checkPin, isLockedItem, lockKey, makePin, validPin, withCategoryState } from '../src/core/lock';
 import { request } from '../src/runtime/http';
@@ -205,13 +205,14 @@ test('sıralama: kısmi kayıt sağlayıcı sırasıyla birleşir, bilinmeyenler
 test('sıralama: rastgele taşımalar düz bir dizideki taşımayla birebir aynı sonucu verir ve kayıt kısa kalır', () => {
   let seed = 12345; const random = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
   let rows = Array.from({ length: 40 }, (_, i) => String(i + 1)), reference = rows.slice(), saved: string[] | undefined;
-  const moves: Move[] = ['up', 'down', 'top'];
+  const moves: Move[] = ['up', 'down', 'top', 'bottom'];
   for (let step = 0; step < 600; step++) {
     if (step === 300) { rows = rows.filter(id => id !== '7'); reference = reference.filter(id => id !== '7'); } // the provider drops one
     const current = applyOrder(rows, id => id, saved);
     assert.deepEqual(current, reference, `before step ${step}`);
-    const id = reference[random(reference.length)], move = moves[random(3)], at = reference.indexOf(id);
+    const id = reference[random(reference.length)], move = moves[random(4)], at = reference.indexOf(id);
     if (move === 'top') reference.splice(0, 0, ...reference.splice(at, 1));
+    else if (move === 'bottom') reference.push(...reference.splice(at, 1));
     else { const to = move === 'up' ? at - 1 : at + 1; if (to >= 0 && to < reference.length) [reference[at], reference[to]] = [reference[to], reference[at]]; }
     saved = moveSaved(saved, current, id, move);
     assert.deepEqual(applyOrder(rows, id => id, saved), reference, `after ${move} of ${id} at step ${step}`);
@@ -221,6 +222,8 @@ test('sıralama: rastgele taşımalar düz bir dizideki taşımayla birebir ayn�
   assert.deepEqual(moveSaved(undefined, long, '1', 'up'), []); assert.deepEqual(moveSaved(undefined, long, '5000', 'down'), []);
   assert.deepEqual(moveSaved(undefined, long, '4321', 'top'), ['4321']);
   assert.equal(moveSaved(undefined, long, '999', 'up').length <= 999, true);
+  assert.deepEqual(moveSaved(undefined, long, '1', 'bottom'), [], 'a list longer than the limit cannot send a row to its end'); assert.equal(fitsEnd(5000), false);
+  assert.deepEqual(moveSaved(undefined, ['a', 'b', 'c'], 'a', 'bottom'), ['b', 'c', 'a']); assert.deepEqual(moveSaved(['x'], ['a', 'b', 'c'], 'c', 'bottom'), ['x']);
   assert.equal(moveSaved(['1', '2', '3', '4'], long, '3', 'top', 3).length <= 3, true);
 });
 test('sıralama: görünmeyen öğeler arasındaki favori taşıması görünen komşuyla yer değiştirir', () => {
@@ -229,6 +232,7 @@ test('sıralama: görünmeyen öğeler arasındaki favori taşıması görünen 
   assert.deepEqual(move('b', 'up'), ['b', 'h1', 'a', 'h2', 'c']);
   assert.deepEqual(move('b', 'down'), ['a', 'h1', 'c', 'h2', 'b']);
   assert.deepEqual(move('c', 'top'), ['c', 'a', 'h1', 'b', 'h2']);
+  assert.deepEqual(move('a', 'bottom'), ['h1', 'b', 'h2', 'c', 'a']); assert.equal(move('c', 'bottom'), list);
   assert.equal(move('a', 'up'), list); assert.equal(move('c', 'down'), list); assert.equal(move('a', 'top'), list); assert.equal(move('h1', 'up'), list);
 });
 test('sıralama kaydı: geçersiz anahtar ve kimlikler atılır, tekrarlar silinir, favori ve geçmişle birlikte korunur', () => {

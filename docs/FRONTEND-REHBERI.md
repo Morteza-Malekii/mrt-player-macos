@@ -3,9 +3,10 @@
 Backend geliştiricisi olup frontend'e yeni başlayanlar için. Bu belge repoyu
 **nasıl yazıldığını, nasıl çalıştığını ve nasıl geliştirileceğini** anlatır.
 
-- Kod durumu: sürüm **0.2.10**, 2026-09-30 tarihli çalışma dizini.
+- Kod durumu: sürüm **0.2.11**, 2026-09-30 tarihli çalışma dizini.
 - 0.2.9 güncellemesi: kaldırılan Akış bilgisi paneline ilişkin bölümler güncellendi.
 - 0.2.10 güncellemesi: Filmler ve Diziler listelerine puana göre süzgeç eklendi (`scoreOf`, `atLeastScore`, `src/ui/App.tsx`).
+- 0.2.11 güncellemesi: Sırala kipine "Sona al" düğmesi eklendi (`Move` türüne `bottom`, `src/core/order.ts`).
 - Belgedeki her iddia koddan okunarak yazıldı. Doğrulanamayan yerler açıkça
   "doğrulanmadı" diye işaretlendi.
 - Satır numarası yerine dosya ve fonksiyon adı verildi; satırlar kayar, adlar

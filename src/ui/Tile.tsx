@@ -8,8 +8,8 @@ const initials = (name: string) => name.slice(0, 2).toLocaleUpperCase('tr-TR');
 // gets a logo plate, a film or series a poster with its score in the corner. Without a picture
 // (posters off, none offered, or it failed) the plate shows the initials or an icon instead.
 // While the list is being arranged (`arrange`), the card does not play; it shows three buttons:
-// to the front, one place earlier, one place later.
-export interface Arrange { first: boolean; last: boolean; onMove(move: Move): void }
+// to the front, one place earlier, one place later, to the end.
+export interface Arrange { first: boolean; last: boolean; canEnd: boolean; onMove(move: Move): void }
 export function Tile({ item, index, playing, favorite, posters, epoch, ready, arrange, onSelect, onFavorite }: { item: Item; index: number; playing: boolean; favorite: boolean; posters: boolean; epoch: number; ready: boolean; arrange?: Arrange; onSelect(): void; onFavorite(): void }) {
   const live = item.kind === 'live', score = live ? 0 : scoreOf(item);
   const rating = score ? (Number.isInteger(score) ? String(score) : score.toFixed(1)) : '';
@@ -24,6 +24,7 @@ export function Tile({ item, index, playing, favorite, posters, epoch, ready, ar
       <button type="button" disabled={arrange.first} aria-label={`${item.name}: başa al`} title="Başa al" onClick={() => arrange.onMove('top')}><Icon name="top" size={16} /></button>
       <button type="button" disabled={arrange.first} aria-label={`${item.name}: öne al`} title="Bir öne al" onClick={() => arrange.onMove('up')}><Icon name="back" size={16} /></button>
       <button type="button" disabled={arrange.last} aria-label={`${item.name}: geriye al`} title="Bir geriye al" onClick={() => arrange.onMove('down')}><Icon name="next" size={16} /></button>
+      <button type="button" disabled={arrange.last || !arrange.canEnd} aria-label={`${item.name}: sona al`} title={arrange.canEnd ? 'Sona al' : 'Sona al: liste çok uzun'} onClick={() => arrange.onMove('bottom')}><Icon name="bottom" size={16} /></button>
     </span>}
     <button disabled={!ready} className={`favorite-button ${favorite ? 'active' : ''}`} aria-label={`${item.name} ${favorite ? 'favorilerden çıkar' : 'favorilere ekle'}`} aria-pressed={favorite} onClick={onFavorite}><Icon name="heart" size={16} /></button>
   </article>;

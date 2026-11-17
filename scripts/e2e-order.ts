@@ -30,7 +30,7 @@ const tileOrder = (page: Page, expected: string[]) => expect.poll(() => names(pa
 const categoryOrder = (page: Page) => page.getByRole('complementary', { name: 'Kategoriler' }).getByRole('button').allInnerTexts();
 const saved = (page: Page) => page.waitForTimeout(900); // the order is saved on a short debounce
 const go = (page: Page, name: string) => page.getByRole('button', { name, exact: true }).click();
-const move = (page: Page, channel: string, how: 'başa al' | 'öne al' | 'geriye al') => page.getByRole('button', { name: `${channel}: ${how}`, exact: true }).click();
+const move = (page: Page, channel: string, how: 'başa al' | 'öne al' | 'geriye al' | 'sona al') => page.getByRole('button', { name: `${channel}: ${how}`, exact: true }).click();
 const managerRows = (page: Page) => page.locator('.manager-row .manager-name').allInnerTexts();
 
 try {
@@ -42,6 +42,7 @@ try {
       await page.getByRole('button', { name: 'Sırala', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Sentetik test yayını: başa al' })).toBeDisabled();
       await expect(page.getByRole('button', { name: 'Kanal 4: geriye al' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Kanal 4: sona al' })).toBeDisabled();
       // A click on the card itself (away from its buttons) does not start a channel.
       await page.getByRole('button', { name: 'Kanal 2', exact: true }).click({ position: { x: 6, y: 6 }, force: true });
       await page.waitForTimeout(500);
@@ -50,6 +51,10 @@ try {
       await tileOrder(page, ['Kanal 3', ...PROVIDER.filter(n => n !== 'Kanal 3')]);
       await move(page, 'Sentetik test yayını', 'geriye al');
       await move(page, 'Kanal 4', 'öne al');
+      await tileOrder(page, ['Kanal 3', 'İstanbul test deseni', 'Sentetik test yayını', 'Kanal 1', 'Kanal 4', 'Kanal 2']);
+      await move(page, 'Kanal 3', 'sona al');
+      await tileOrder(page, ['İstanbul test deseni', 'Sentetik test yayını', 'Kanal 1', 'Kanal 4', 'Kanal 2', 'Kanal 3']);
+      await move(page, 'Kanal 3', 'başa al');
       await tileOrder(page, ['Kanal 3', 'İstanbul test deseni', 'Sentetik test yayını', 'Kanal 1', 'Kanal 4', 'Kanal 2']);
       // Searching narrows what is on screen, so arranging is off until the search is cleared.
       await page.getByLabel('İçerik ara').fill('Kanal');

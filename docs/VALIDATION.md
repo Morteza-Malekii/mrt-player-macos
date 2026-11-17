@@ -724,3 +724,14 @@ Testler gerçek hesap, harici IPTV adresi veya üçüncü taraf içerik kullanma
 - `npm run check`: TypeScript, 68 birim testi ve derleme geçti. `npm run test:score`: süzgeç 7 ve 9
   değerlerinde doğru içerikleri bıraktı, Canlı TV'de seçici yok, "Hepsi" hepsini geri getirdi.
   `npm run test:e2e` ve `npm run test:posters` de geçti.
+
+## Sırala kipinde "Sona al" düğmesi · 0.2.11
+
+- Kanal ve favori kartlarındaki Başa al / Öne al / Geriye al düğmelerine "Sona al" eklendi.
+  Kayıtlı sıra yalnızca düzenlenen öneki tuttuğu için sona almak, listenin tamamının adlarını yazmayı
+  gerektirir; bu yüzden 1000'den uzun bir kategoride düğme kapalıdır ("liste çok uzun" ipucu).
+  Favorilerde sınır yoktur.
+- Puana göre süzgeç açıkken (Filmler/Diziler) liste aramadaki gibi daralmış sayıldığından Sırala kipi
+  kapalıdır; bu, 0.2.10'daki bir eksikti.
+- `npm run check`: 68 birim test (rastgele taşıma testi artık sona almayı da içeriyor) ve derleme geçti.
+  `npm run test:order` ve `npm run test:channels` geçti.
